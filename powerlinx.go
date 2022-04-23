@@ -13,6 +13,7 @@ import (
 	"time"
 )
 
+// A Site holds all the information about this website
 type Site struct {
 	content     fs.FS
 	templates   fs.FS
@@ -22,6 +23,14 @@ type Site struct {
 	RecentPosts []*Page
 }
 
+// NewSite creates a new Site and takes three fs.FS parameters
+// content is a FS containing a directory named data, which contains all your content
+// templates is a FS containing HTML templates
+// templates/ should contain layouts for individual pages
+// templates/base should contain layouts for the whole site
+// assets is a FS containing static files like css, js, etc.
+// NewSite automatically loads all contents of data into memory,
+// which makes this unfit for exceptionally large sites
 func NewSite(content, templates, assets fs.FS) *Site {
 	site := Site{
 		content:   content,
@@ -38,10 +47,12 @@ func NewSite(content, templates, assets fs.FS) *Site {
 	return &site
 }
 
+// AddView adds a view to the site's internal map
 func (s *Site) AddView(name string, v *View) {
 	s.Views[name] = v
 }
 
+// A Page contains metadata and content for a single webpages
 type Page struct {
 	Title     string    `json:"title"`
 	CreatedAt time.Time `json:"date"`
