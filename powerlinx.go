@@ -17,7 +17,6 @@ import (
 type Site struct {
 	content     fs.FS
 	templates   fs.FS
-	assets      fs.FS
 	PageMap     map[string]*Page
 	Views       map[string]*View
 	RecentPosts []*Page
@@ -28,14 +27,12 @@ type Site struct {
 // templates is a FS containing HTML templates
 // templates/ should contain layouts for individual pages
 // templates/base should contain layouts for the whole site
-// assets is a FS containing static files like css, js, etc.
-// NewSite automatically loads all contents of data into memory,
+// NewSite automatically loads all contents of data into memory at startup,
 // which makes this unfit for exceptionally large sites
-func NewSite(content, templates, assets fs.FS) *Site {
+func NewSite(content, templates fs.FS) *Site {
 	site := Site{
 		content:   content,
 		templates: templates,
-		assets:    assets,
 		PageMap:   make(map[string]*Page),
 		Views:     make(map[string]*View),
 	}
@@ -53,6 +50,7 @@ func (s *Site) AddView(name string, v *View) {
 }
 
 // A Page contains metadata and content for a single webpages
+// Metadata is standard json surrounded by "---"
 type Page struct {
 	Title     string    `json:"title"`
 	CreatedAt time.Time `json:"date"`
@@ -62,7 +60,7 @@ type Page struct {
 }
 
 func (s *Site) loadAllStaticPages() error {
-	err := fs.WalkDir(s.content, "data", func(path string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(s.content, ".", func(path string, d fs.DirEntry, err error) error {
 		if d.IsDir() {
 			return nil
 		} else {
@@ -116,8 +114,9 @@ func (s *Site) parseSinglePage(path string) (*Page, error) {
 	defer file.Close()
 	metadata, body := parseMetadata(file)
 	bodyHTML := template.HTML(string(body))
-	url := strings.TrimPrefix(strings.TrimSuffix(path, ".html"), "data")
+	url := strings.TrimSuffix("/"+path, ".html")
 	page := &Page{Body: bodyHTML, Url: url}
+	log.Printf("Loading Page %s, Url %s", path, url)
 	// parse metadata
 	if len(metadata) > 0 {
 		err := json.Unmarshal(metadata, page)
@@ -161,7 +160,7 @@ func (v *View) Render(w http.ResponseWriter, data interface{}) error {
 }
 
 func (s *Site) NewView(layout string, lastTmpl string) *View {
-	t, err := template.ParseFS(s.templates, lastTmpl, "templates/base/*.html")
+	t, err := template.ParseFS(s.templates, lastTmpl, "base/*.html")
 	if err != nil {
 		log.Fatal(err)
 	}
