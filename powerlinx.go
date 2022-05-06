@@ -19,14 +19,14 @@ type Site struct {
 	templates   fs.FS
 	PageMap     map[string]*Page
 	Views       map[string]*View
-	RecentPosts []*Page
+	SortedPages []*Page
 }
 
-// NewSite creates a new Site and takes three fs.FS parameters
-// content is a FS containing a directory named data, which contains all your content
-// templates is a FS containing HTML templates
-// templates/ should contain layouts for individual pages
-// templates/base should contain layouts for the whole site
+// NewSite creates a new Site and takes two fs.FS parameters
+// content is a FS containing  all your content
+// templates is a FS containing HTML templates,
+// it's root directory should contain layouts for individual pages
+// and a base/ directory containing layouts for the whole site
 // NewSite automatically loads all contents of data into memory at startup,
 // which makes this unfit for exceptionally large sites
 func NewSite(content, templates fs.FS) *Site {
@@ -40,7 +40,7 @@ func NewSite(content, templates fs.FS) *Site {
 	if err != nil {
 		log.Fatal(err)
 	}
-	site.RecentPosts = site.getRecentBlogPosts(10)
+	site.SortedPages = site.sortPages()
 	return &site
 }
 
@@ -75,6 +75,15 @@ func (s *Site) loadAllStaticPages() error {
 	return err
 }
 
+func (s *Site) sortPages() []*Page {
+	all := make([]*Page, 0, len(s.PageMap))
+	for _, value := range s.PageMap {
+		all = append(all, value)
+	}
+	sort.Sort(byTime(all))
+	return all
+}
+
 type byTime []*Page
 
 func (t byTime) Len() int {
@@ -92,18 +101,23 @@ func (t byTime) Less(i, j int) bool {
 type body []byte
 type metadata []byte
 
-func (s *Site) getRecentBlogPosts(count int) []*Page {
-	all := make([]*Page, 0, len(s.PageMap))
-	for _, value := range s.PageMap {
-		if value.Type == "post" {
-			all = append(all, value)
+// GetRecentPosts returns a slice of Pages of the specified pageType,
+// as defined in a Page's metadata.
+// If pageType is "", Pages of any type are returned
+// The length of the returned slice is either count or the length of s.PageMap,
+// whichever is smaller
+func (s *Site) GetRecentPages(count int, pageType string) []*Page {
+	all := make([]*Page, 0, count)
+
+	for _, page := range s.SortedPages {
+		if page.Type == pageType || pageType == "" {
+			all = append(all, page)
+		}
+		if len(all) == count {
+			break
 		}
 	}
-	sort.Sort(byTime(all))
-	if count > len(s.PageMap) {
-		return all
-	}
-	return all[:count]
+	return all
 }
 
 func (s *Site) parseSinglePage(path string) (*Page, error) {
@@ -150,15 +164,18 @@ func parseMetadata(r io.Reader) (metadata, body) {
 	return metadata, body
 }
 
+// View stores information about a template
 type View struct {
 	Template *template.Template
 	Layout   string
 }
 
+// Execute a given template, passing it data
 func (v *View) Render(w http.ResponseWriter, data interface{}) error {
 	return v.Template.ExecuteTemplate(w, v.Layout, data)
 }
 
+// Add a View to the Site
 func (s *Site) NewView(layout string, lastTmpl string) *View {
 	t, err := template.ParseFS(s.templates, lastTmpl, "base/*.html")
 	if err != nil {
