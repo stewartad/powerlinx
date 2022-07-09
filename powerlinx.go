@@ -26,6 +26,7 @@ var markdown = goldmark.New(
 	),
 	goldmark.WithRendererOptions(
 		html.WithHardWraps(),
+		html.WithUnsafe(),
 	),
 )
 
