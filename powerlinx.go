@@ -2,15 +2,31 @@ package powerlinx
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"html/template"
 	"io"
 	"io/fs"
 	"log"
 	"net/http"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/renderer/html"
+)
+
+var markdown = goldmark.New(
+	goldmark.WithExtensions(
+		extension.GFM,
+		extension.Typographer,
+	),
+	goldmark.WithRendererOptions(
+		html.WithHardWraps(),
+	),
 )
 
 // A Site holds all the information about this website
@@ -68,7 +84,7 @@ func (s *Site) loadAllStaticPages() error {
 			if ferr != nil {
 				return ferr
 			}
-			s.PageMap[strings.TrimPrefix(path, "data/")] = page
+			s.PageMap[page.Url] = page
 		}
 		return nil
 	})
@@ -101,7 +117,7 @@ func (t byTime) Less(i, j int) bool {
 type body []byte
 type metadata []byte
 
-// GetRecentPosts returns a slice of Pages of the specified pageType,
+// GetRecentPages returns a slice of Pages of the specified pageType,
 // as defined in a Page's metadata.
 // If pageType is "", Pages of any type are returned
 // The length of the returned slice is either count or the length of s.PageMap,
@@ -126,9 +142,26 @@ func (s *Site) parseSinglePage(path string) (*Page, error) {
 		return nil, err
 	}
 	defer file.Close()
+
 	metadata, body := parseMetadata(file)
-	bodyHTML := template.HTML(string(body))
-	url := strings.TrimSuffix("/"+path, ".html")
+	filetype := filepath.Ext(path)
+
+	var bodyHTML template.HTML
+	url := strings.TrimSuffix("/"+path, filetype)
+
+	// if md, parse to html
+	// if html, parse as-is
+	if filetype == ".md" {
+		var buf bytes.Buffer
+		if err := markdown.Convert(body, &buf); err != nil {
+			log.Panic(err)
+		}
+		bodyHTML = template.HTML(buf.String())
+
+	} else if filetype == ".html" {
+		bodyHTML = template.HTML(string(body))
+	}
+
 	page := &Page{Body: bodyHTML, Url: url}
 	log.Printf("Loading Page %s, Url %s", path, url)
 	// parse metadata
@@ -159,6 +192,7 @@ func parseMetadata(r io.Reader) (metadata, body) {
 		} else {
 			contentBytes := scanner.Bytes()
 			body = append(body, contentBytes...)
+			body = append(body, '\n')
 		}
 	}
 	return metadata, body
