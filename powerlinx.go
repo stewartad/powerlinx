@@ -81,7 +81,7 @@ func (s *Site) loadAllStaticPages() error {
 		if d.IsDir() {
 			return nil
 		} else {
-			page, ferr := s.parseSinglePage(path)
+			page, ferr := s.createPageFromFile(path)
 			if ferr != nil {
 				return ferr
 			}
@@ -115,9 +115,6 @@ func (t byTime) Less(i, j int) bool {
 	return t[j].CreatedAt.Before(t[i].CreatedAt)
 }
 
-type body []byte
-type metadata []byte
-
 // GetRecentPages returns a slice of Pages of the specified pageType,
 // as defined in a Page's metadata.
 // If pageType is "", Pages of any type are returned
@@ -137,46 +134,50 @@ func (s *Site) GetRecentPages(count int, pageType string) []*Page {
 	return all
 }
 
-func (s *Site) parseSinglePage(path string) (*Page, error) {
+func (s *Site) createPageFromFile(path string) (*Page, error) {
 	file, err := s.content.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
 
-	metadata, body := parseMetadata(file)
+	metadata, body := separateMetadata(file)
 	filetype := filepath.Ext(path)
 
-	var bodyHTML template.HTML
-	url := strings.TrimSuffix("/"+path, filetype)
+	page, err := parseMetadata(metadata)
+	if err != nil {
+		return nil, err
+	}
 
+	page.Body = convertToHTML(body, filetype)
+	page.Url = strings.TrimSuffix("/"+path, filetype)
+
+	log.Printf("Loading Page %s, Url %s", path, page.Url)
+
+	return page, nil
+}
+
+func convertToHTML(data []byte, filetype string) template.HTML {
 	// if md, parse to html
 	// if html, parse as-is
 	if filetype == ".md" {
 		var buf bytes.Buffer
-		if err := markdown.Convert(body, &buf); err != nil {
+		if err := markdown.Convert(data, &buf); err != nil {
 			log.Panic(err)
 		}
-		bodyHTML = template.HTML(buf.String())
+		return template.HTML(buf.String())
 
 	} else if filetype == ".html" {
-		bodyHTML = template.HTML(string(body))
+		return template.HTML(string(data))
+	} else {
+		log.Printf("Invalid filetype %s\n", filetype)
 	}
-
-	page := &Page{Body: bodyHTML, Url: url}
-	log.Printf("Loading Page %s, Url %s", path, url)
-	// parse metadata
-	if len(metadata) > 0 {
-		err := json.Unmarshal(metadata, page)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return page, nil
+	return ""
 }
 
-// parseMetadata parses JSON metadata at the top of the file, surrounded by "---"
-func parseMetadata(r io.Reader) (metadata, body) {
+// separateMetadata separates JSON metadata from page content.
+// Metadata is at the top of the file, surrounded by "---"
+func separateMetadata(r io.Reader) ([]byte, []byte) {
 	scanner := bufio.NewScanner(r)
 	metadata := []byte{}
 	body := []byte{}
@@ -197,6 +198,17 @@ func parseMetadata(r io.Reader) (metadata, body) {
 		}
 	}
 	return metadata, body
+}
+
+func parseMetadata(data []byte) (*Page, error) {
+	page := Page{}
+	if len(data) > 0 {
+		err := json.Unmarshal(data, &page)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &page, nil
 }
 
 // View stores information about a template
