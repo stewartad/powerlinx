@@ -101,6 +101,7 @@ func (s *Site) sortPages() []*Page {
 	return all
 }
 
+// Create Sort Interface for Pages
 type byTime []*Page
 
 func (t byTime) Len() int {
