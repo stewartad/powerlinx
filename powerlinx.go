@@ -8,9 +8,9 @@ import (
 	"io"
 	"io/fs"
 	"log"
-	"net/http"
+	"os"
+	"path"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -30,12 +30,23 @@ var markdown = goldmark.New(
 	),
 )
 
+// A Page contains metadata and content for a single webpages
+// Metadata is standard json surrounded by "---"
+type Page struct {
+	Title     string    `json:"title"`
+	CreatedAt time.Time `json:"date"`
+	Type      string    `json:"type"`
+	Url       string
+	Body      template.HTML
+}
+
 // A Site holds all the information about this website
 type Site struct {
 	content     fs.FS
 	templates   fs.FS
 	PageMap     map[string]*Page
 	Views       map[string]*View
+	StaticViews map[string]*View
 	SortedPages []*Page
 }
 
@@ -48,10 +59,11 @@ type Site struct {
 // which makes this unfit for exceptionally large sites
 func NewSite(content, templates fs.FS) *Site {
 	site := Site{
-		content:   content,
-		templates: templates,
-		PageMap:   make(map[string]*Page),
-		Views:     make(map[string]*View),
+		content:     content,
+		templates:   templates,
+		PageMap:     make(map[string]*Page),
+		Views:       make(map[string]*View),
+		StaticViews: make(map[string]*View),
 	}
 	err := site.loadAllStaticPages()
 	if err != nil {
@@ -66,18 +78,11 @@ func (s *Site) AddView(name string, v *View) {
 	s.Views[name] = v
 }
 
-// A Page contains metadata and content for a single webpages
-// Metadata is standard json surrounded by "---"
-type Page struct {
-	Title     string    `json:"title"`
-	CreatedAt time.Time `json:"date"`
-	Type      string    `json:"type"`
-	Body      template.HTML
-	Url       string
-}
-
 func (s *Site) loadAllStaticPages() error {
 	err := fs.WalkDir(s.content, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			log.Fatal(err)
+		}
 		if d.IsDir() {
 			return nil
 		} else {
@@ -90,30 +95,6 @@ func (s *Site) loadAllStaticPages() error {
 		return nil
 	})
 	return err
-}
-
-func (s *Site) sortPages() []*Page {
-	all := make([]*Page, 0, len(s.PageMap))
-	for _, value := range s.PageMap {
-		all = append(all, value)
-	}
-	sort.Sort(byTime(all))
-	return all
-}
-
-// Create Sort Interface for Pages
-type byTime []*Page
-
-func (t byTime) Len() int {
-	return len(t)
-}
-
-func (t byTime) Swap(i, j int) {
-	t[i], t[j] = t[j], t[i]
-}
-
-func (t byTime) Less(i, j int) bool {
-	return t[j].CreatedAt.Before(t[i].CreatedAt)
 }
 
 // GetRecentPages returns a slice of Pages of the specified pageType,
@@ -212,23 +193,69 @@ func parseMetadata(data []byte) (*Page, error) {
 	return &page, nil
 }
 
-// View stores information about a template
-type View struct {
-	Template *template.Template
-	Layout   string
+// looks for _index.html and _single.html
+//
+func (s *Site) GenerateViews() error {
+	// walk template directory
+	err := fs.WalkDir(s.templates, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			log.Fatalln(err)
+		}
+		// skip directories and all base templates
+		if d.IsDir() || strings.Contains(path, "base") {
+			return nil
+		} else {
+			s.StaticViews[path] = s.NewView("layout.html", d.Name())
+		}
+		return nil
+	})
+	return err
 }
 
-// Execute a given template, passing it data
-func (v *View) Render(w http.ResponseWriter, data interface{}) error {
-	return v.Template.ExecuteTemplate(w, v.Layout, data)
-}
-
-// Add a View to the Site
-func (s *Site) NewView(layout string, lastTmpl string) *View {
-	t, err := template.ParseFS(s.templates, lastTmpl, "base/*.html")
+func createHTMLFile(outPath string) (*os.File, error) {
+	err := os.MkdirAll(path.Dir(outPath), 0755)
+	if err != nil && !os.IsExist(err) {
+		return nil, err
+	}
+	file, err := os.Create(outPath)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
+	}
+	return file, nil
+}
+
+func getView(pagePath string) (*View, error) {
+	if path.Base(pagePath) == path.Dir(pagePath) {
+		return nil, nil
+	}
+	return nil, nil
+}
+
+func (s *Site) WriteHTML() {
+	err := os.Mkdir("pub", 0755)
+	if err != nil && !os.IsExist(err) {
+		log.Println(err)
 	}
 
-	return &View{Template: t, Layout: layout}
+	for url, page := range s.PageMap {
+		outPath := path.Join("pub" + url + ".html")
+		outFile, err := createHTMLFile(outPath)
+		if err != nil {
+			// TODO: better handling
+			panic(err)
+		}
+
+		fileWriter := bufio.NewWriter(outFile)
+		// TODO: determine the real template to render
+		// TODO: properly generate blog page
+
+		err = s.StaticViews["_index.html"].Render(fileWriter, page)
+		if err != nil {
+			panic(err)
+		}
+		err = fileWriter.Flush()
+		if err != nil {
+			panic(err)
+		}
+	}
 }
