@@ -20,7 +20,12 @@ func createHTMLFile(outPath string) (*os.File, error) {
 }
 
 func (s *Site) GenerateSite() {
-	err := os.Mkdir("pub", 0755)
+	err := os.RemoveAll("pub")
+	if err != nil {
+		log.Println("could not delete pub")
+	}
+
+	err = os.Mkdir("pub", 0755)
 	if err != nil && !os.IsExist(err) {
 		log.Println(err)
 	}
