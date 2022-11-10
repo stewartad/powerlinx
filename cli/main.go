@@ -38,7 +38,11 @@ func main() {
 	// x/_index.html for directory
 	// x/_single.html for individual pages in directory
 
-	site.GenerateSite()
+	err := site.GenerateSite("pub")
+	if err != nil {
+		panic(err)
+	}
+	log.Println("Generated site in ./pub")
 
 	fileserver := http.FileServer(HTMLDir{http.Dir("pub/")})
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(assets))))

@@ -19,36 +19,71 @@ func createHTMLFile(outPath string) (*os.File, error) {
 	return file, nil
 }
 
-func (s *Site) GenerateSite() {
-	err := os.RemoveAll("pub")
+func writeSinglePage(outFile *os.File, page *Page) error {
+	fileWriter := bufio.NewWriter(outFile)
+	err := page.View.Render(fileWriter, page)
+	if err != nil {
+		return err
+	}
+	err = fileWriter.Flush()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func writeListPage(outFile *os.File, page *ListPage) error {
+	// TODO: Page interface that Page (SinglePage) and ListPage implement
+	fileWriter := bufio.NewWriter(outFile)
+	err := page.View.Render(fileWriter, page)
+	if err != nil {
+		return err
+	}
+	err = fileWriter.Flush()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Site) GenerateSite(outdir string) error {
+	err := os.RemoveAll(outdir)
 	if err != nil {
 		log.Println("could not delete pub")
 	}
 
-	err = os.Mkdir("pub", 0755)
+	err = os.Mkdir(outdir, 0755)
 	if err != nil && !os.IsExist(err) {
 		log.Println(err)
 	}
 
-	for url, page := range s.PageMap {
-		outPath := path.Join("pub" + url + ".html")
+	for dir, page := range s.ListPageMap {
+		outPath := path.Clean(path.Join(outdir + dir + string(os.PathSeparator) + "index.html"))
 		outFile, err := createHTMLFile(outPath)
 		if err != nil {
-			// TODO: better handling
-			panic(err)
+			return err
 		}
+		err = writeListPage(outFile, page)
+		if err != nil {
+			return err
+		}
+	}
 
+	for url, page := range s.PageMap {
+		outPath := path.Join(outdir + url + ".html")
+		outFile, err := createHTMLFile(outPath)
+		if err != nil {
+			return err
+		}
 		fileWriter := bufio.NewWriter(outFile)
-		// TODO: determine the real template to render
-		// TODO: properly generate blog page
-
 		err = page.View.Render(fileWriter, page)
 		if err != nil {
-			panic(err)
+			return err
 		}
 		err = fileWriter.Flush()
 		if err != nil {
-			panic(err)
+			return err
 		}
 	}
+	return nil
 }

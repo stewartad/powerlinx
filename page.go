@@ -10,6 +10,10 @@ import (
 	"time"
 )
 
+const TMPL_PAGE = "single"
+const TMPL_LIST = "list"
+const TMPL_INDEX = "index"
+
 /*
  * Util functions relating to the creation and parsing of individual pages
  */

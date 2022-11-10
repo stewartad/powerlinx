@@ -1,6 +1,7 @@
 package powerlinx
 
 import (
+	"errors"
 	"io/fs"
 	"log"
 	"path"
@@ -25,12 +26,13 @@ var markdown = goldmark.New(
 
 // A Site holds all the information about this website
 type Site struct {
-	content     fs.FS
-	templates   fs.FS
-	PageMap     map[string]*Page
-	Views       map[string]*View
-	StaticViews map[string]*View
-	SortedPages []*Page
+	content      fs.FS
+	templates    fs.FS
+	PageMap      map[string]*Page
+	ListPageMap  map[string]*ListPage
+	DynamicViews map[string]*View
+	StaticViews  map[string]*View
+	SortedPages  []*Page
 }
 
 // NewSite creates a new Site and takes two fs.FS parameters
@@ -42,17 +44,22 @@ type Site struct {
 // which makes this unfit for exceptionally large sites
 func NewSite(content, templates fs.FS) *Site {
 	site := Site{
-		content:     content,
-		templates:   templates,
-		PageMap:     make(map[string]*Page),
-		Views:       make(map[string]*View),
-		StaticViews: make(map[string]*View),
+		content:      content,
+		templates:    templates,
+		PageMap:      make(map[string]*Page),
+		ListPageMap:  make(map[string]*ListPage),
+		DynamicViews: make(map[string]*View),
+		StaticViews:  make(map[string]*View),
 	}
 	err := site.createViewsFromTemplates()
 	if err != nil {
 		log.Fatal(err)
 	}
 	err = site.discoverPages()
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = site.discoverListPages()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -63,7 +70,7 @@ func NewSite(content, templates fs.FS) *Site {
 
 // AddView adds a view to the site's internal map
 func (s *Site) AddView(name string, v *View) {
-	s.Views[name] = v
+	s.DynamicViews[name] = v
 }
 
 // GetRecentPages returns a slice of Pages of the specified pageType,
@@ -94,28 +101,14 @@ func (s *Site) createViewsFromTemplates() error {
 			log.Fatalln(err)
 		}
 		// skip base templates
-		if d.IsDir() || strings.Contains(filePath, "base") || filePath == "." {
+		if d.IsDir() || strings.Contains(filePath, "base") {
 			return nil
 		}
-		if d.Name() == "_index.html" {
-			viewName := path.Dir(filePath)
-			if viewName == "." {
-				viewName = "/"
-			} else {
-				viewName = "/" + viewName
-			}
-			s.StaticViews[viewName] = s.NewView("layout.html", path.Clean(filePath))
-		} else if d.Name() == "_single.html" {
-			// TODO: remove hardcoding of _single.html to allow for custom templates per-page
-			// _single.html will be used by default if no other template is found
-			viewName := path.Dir(filePath)
-			if viewName == "." {
-				viewName = "/page"
-			} else {
-				viewName = "/" + viewName + "/page"
-			}
-			s.StaticViews[viewName] = s.NewView("layout.html", path.Clean(filePath))
-		}
+
+		tmplType := strings.TrimPrefix(strings.TrimSuffix(path.Base(filePath), ".html"), "_")
+		viewName := path.Clean(strings.TrimPrefix(path.Dir(filePath)+"/"+tmplType, "./"))
+		s.StaticViews[viewName] = s.NewView("layout.html", path.Clean(filePath))
+
 		return nil
 	})
 	return err
@@ -126,15 +119,37 @@ func (s *Site) discoverPages() error {
 		if err != nil {
 			log.Fatal(err)
 		}
-		if d.IsDir() {
+		if d.Name() == "." || d.IsDir() {
+			// skipping directories, will discover them in the next pass
 			return nil
-		} else {
-			page, ferr := s.createPageFromFile(path)
-			if ferr != nil {
-				return ferr
-			}
-			s.PageMap[page.Url] = page
 		}
+
+		page, ferr := s.createPageFromFile(path)
+		if ferr != nil {
+			return ferr
+		}
+		s.PageMap[page.Url] = page
+
+		return nil
+	})
+
+	return err
+}
+
+func (s *Site) discoverListPages() error {
+	err := fs.WalkDir(s.content, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			log.Fatal(err)
+		}
+		if d.Name() == "." || !d.IsDir() {
+			return nil
+		}
+
+		page, ferr := s.createListPage(path, d.Name())
+		if ferr != nil {
+			return ferr
+		}
+		s.ListPageMap[page.Url] = page
 		return nil
 	})
 	return err
@@ -158,12 +173,11 @@ func (s *Site) createPageFromFile(filePath string) (*Page, error) {
 	page.Body = convertToHTML(body, filetype)
 	page.Url = strings.TrimSuffix("/"+filePath, filetype)
 
-	tmplName := "page"
 	if path.Base(filePath) == "index.html" {
-		tmplName = ""
+		page.View = s.getView(path.Dir(filePath), TMPL_INDEX)
+	} else {
+		page.View = s.getView(path.Dir(filePath), TMPL_PAGE)
 	}
-
-	page.View = s.getView(path.Dir(page.Url), tmplName)
 
 	log.Printf("Loading Page %s, Url %s", filePath, page.Url)
 
@@ -181,5 +195,39 @@ func (s *Site) getView(pageDir string, templateName string) *View {
 		}
 		currDir = path.Dir(currDir)
 	}
-	return s.StaticViews["/"+templateName]
+	// Hack to prevent homepage from rendering as a ListPage
+	return s.StaticViews[templateName]
+}
+
+func (s *Site) getAllPagesInDir(dir string) []*Page {
+	pages := make([]*Page, 0)
+	for url, page := range s.PageMap {
+		if strings.HasPrefix(url, dir) {
+			pages = append(pages, page)
+		}
+	}
+	return pages
+}
+
+func (s *Site) createListPage(dir string, title string) (*ListPage, error) {
+
+	// turn title to title case
+	title = strings.ToUpper(string(title[0])) + string(title[1:])
+
+	view := s.getView(dir, TMPL_LIST)
+
+	if view == nil {
+		log.Printf("could not find view")
+		// TODO: error
+		return nil, errors.New("could not find view")
+	}
+	pages := s.getAllPagesInDir(path.Clean("/" + dir))
+	sortPageList(pages)
+	page := ListPage{
+		Title: title,
+		Url:   "/" + dir,
+		Pages: pages,
+		View:  view,
+	}
+	return &page, nil
 }
