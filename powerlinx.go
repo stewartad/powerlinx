@@ -38,6 +38,7 @@ type Page struct {
 	Type      string    `json:"type"`
 	Url       string
 	Body      template.HTML
+	View      *View
 }
 
 // A Site holds all the information about this website
@@ -65,10 +66,15 @@ func NewSite(content, templates fs.FS) *Site {
 		Views:       make(map[string]*View),
 		StaticViews: make(map[string]*View),
 	}
-	err := site.loadAllStaticPages()
+	err := site.GenerateViews()
 	if err != nil {
 		log.Fatal(err)
 	}
+	err = site.loadAllStaticPages()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	site.SortedPages = site.sortPages()
 	return &site
 }
@@ -116,15 +122,15 @@ func (s *Site) GetRecentPages(count int, pageType string) []*Page {
 	return all
 }
 
-func (s *Site) createPageFromFile(path string) (*Page, error) {
-	file, err := s.content.Open(path)
+func (s *Site) createPageFromFile(filePath string) (*Page, error) {
+	file, err := s.content.Open(filePath)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
 
 	metadata, body := separateMetadata(file)
-	filetype := filepath.Ext(path)
+	filetype := filepath.Ext(filePath)
 
 	page, err := parseMetadata(metadata)
 	if err != nil {
@@ -132,9 +138,10 @@ func (s *Site) createPageFromFile(path string) (*Page, error) {
 	}
 
 	page.Body = convertToHTML(body, filetype)
-	page.Url = strings.TrimSuffix("/"+path, filetype)
+	page.Url = strings.TrimSuffix("/"+filePath, filetype)
+	page.View = s.getTemplate(path.Dir(page.Url), "page")
 
-	log.Printf("Loading Page %s, Url %s", path, page.Url)
+	log.Printf("Loading Page %s, Url %s", filePath, page.Url)
 
 	return page, nil
 }
@@ -193,19 +200,70 @@ func parseMetadata(data []byte) (*Page, error) {
 	return &page, nil
 }
 
-// looks for _index.html and _single.html
-//
-func (s *Site) GenerateViews() error {
-	// walk template directory
+func (s *Site) DiscoverTemplates() error {
+	// walk template dir
 	err := fs.WalkDir(s.templates, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			log.Fatalln(err)
 		}
-		// skip directories and all base templates
-		if d.IsDir() || strings.Contains(path, "base") {
+		// skip base templates
+		if strings.Contains(path, "base") || path == "." {
 			return nil
+		}
+		if d.IsDir() {
+			s.StaticViews[path] = s.NewView("layout.html", path+"/_index.html")
 		} else {
-			s.StaticViews[path] = s.NewView("layout.html", d.Name())
+			s.StaticViews[path] = s.NewView("layout.html", path)
+		}
+		return nil
+	})
+	return err
+}
+
+func (s *Site) getTemplate(pageDir string, templateName string) *View {
+
+	currDir := pageDir
+	for currDir != "." {
+		tmpl := path.Clean(currDir + "/" + templateName)
+		view, exists := s.StaticViews[tmpl]
+		if exists {
+			return view
+		}
+		currDir = path.Dir(currDir)
+	}
+	return s.StaticViews["/"+templateName]
+}
+
+// looks for _index.html and _single.html
+//
+func (s *Site) GenerateViews() error {
+	// walk template directory
+	err := fs.WalkDir(s.templates, ".", func(filePath string, d fs.DirEntry, err error) error {
+		if err != nil {
+			log.Fatalln(err)
+		}
+		// skip base templates
+		if d.IsDir() || strings.Contains(filePath, "base") || filePath == "." {
+			return nil
+		}
+		if d.Name() == "_index.html" {
+			viewName := path.Dir(filePath)
+			if viewName == "." {
+				viewName = "/"
+			} else {
+				viewName = "/" + viewName
+			}
+			s.StaticViews[viewName] = s.NewView("layout.html", path.Clean(filePath))
+		} else if d.Name() == "_single.html" {
+			// TODO: remove hardcoding of _single.html to allow for custom templates per-page
+			// _single.html will be used by default if no other template is found
+			viewName := path.Dir(filePath)
+			if viewName == "." {
+				viewName = "/page"
+			} else {
+				viewName = "/" + viewName + "/page"
+			}
+			s.StaticViews[viewName] = s.NewView("layout.html", path.Clean(filePath))
 		}
 		return nil
 	})
@@ -224,14 +282,7 @@ func createHTMLFile(outPath string) (*os.File, error) {
 	return file, nil
 }
 
-func getView(pagePath string) (*View, error) {
-	if path.Base(pagePath) == path.Dir(pagePath) {
-		return nil, nil
-	}
-	return nil, nil
-}
-
-func (s *Site) WriteHTML() {
+func (s *Site) GenerateSite() {
 	err := os.Mkdir("pub", 0755)
 	if err != nil && !os.IsExist(err) {
 		log.Println(err)
@@ -249,7 +300,7 @@ func (s *Site) WriteHTML() {
 		// TODO: determine the real template to render
 		// TODO: properly generate blog page
 
-		err = s.StaticViews["_index.html"].Render(fileWriter, page)
+		err = page.View.Render(fileWriter, page)
 		if err != nil {
 			panic(err)
 		}
