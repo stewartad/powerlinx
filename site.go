@@ -170,7 +170,13 @@ func (s *Site) createPageFromFile(filePath string) (*Page, error) {
 
 	page.Body = convertToHTML(body, filetype)
 	page.Url = strings.TrimSuffix("/"+filePath, filetype)
-	page.View = s.getView(path.Dir(page.Url), "page")
+
+	tmplName := "page"
+	if path.Base(filePath) == "index.html" {
+		tmplName = ""
+	}
+
+	page.View = s.getView(path.Dir(page.Url), tmplName)
 
 	log.Printf("Loading Page %s, Url %s", filePath, page.Url)
 
