@@ -38,8 +38,6 @@ func main() {
 	// x/_index.html for directory
 	// x/_single.html for individual pages in directory
 
-	// site.GenerateViews()
-
 	site.GenerateSite()
 
 	fileserver := http.FileServer(HTMLDir{http.Dir("pub/")})
