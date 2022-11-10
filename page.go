@@ -7,11 +7,28 @@ import (
 	"html/template"
 	"io"
 	"log"
+	"time"
 )
 
 /*
  * Util functions relating to the creation and parsing of individual pages
  */
+
+// A Page contains metadata and content for a single webpages
+// Metadata is standard json surrounded by "---"
+type Page struct {
+	Title     string    `json:"title"`
+	CreatedAt time.Time `json:"date"`
+	Type      string    `json:"type"`
+	Url       string
+	Body      interface{}
+	View      *View
+}
+
+type ListPage struct {
+	Title string
+	Posts []*Page
+}
 
 // separateMetadata separates JSON metadata from page content.
 // Metadata is at the top of the file, surrounded by "---"
