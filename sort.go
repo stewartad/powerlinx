@@ -2,13 +2,18 @@ package powerlinx
 
 import "sort"
 
-func (s *Site) sortPages() []*Page {
+func (s *Site) sortAllPages() []*Page {
 	all := make([]*Page, 0, len(s.PageMap))
 	for _, value := range s.PageMap {
 		all = append(all, value)
 	}
 	sort.Sort(byTime(all))
 	return all
+}
+
+func sortPageList(pages []*Page) []*Page {
+	sort.Sort(byTime(pages))
+	return pages
 }
 
 // Create Sort Interface for Pages

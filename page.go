@@ -27,7 +27,9 @@ type Page struct {
 
 type ListPage struct {
 	Title string
-	Posts []*Page
+	Url   string
+	Pages []*Page
+	View  *View
 }
 
 // separateMetadata separates JSON metadata from page content.

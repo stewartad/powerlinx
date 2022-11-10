@@ -1,13 +1,11 @@
 package powerlinx
 
 import (
-	"html/template"
 	"io/fs"
 	"log"
 	"path"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
@@ -24,17 +22,6 @@ var markdown = goldmark.New(
 		html.WithUnsafe(),
 	),
 )
-
-// A Page contains metadata and content for a single webpages
-// Metadata is standard json surrounded by "---"
-type Page struct {
-	Title     string    `json:"title"`
-	CreatedAt time.Time `json:"date"`
-	Type      string    `json:"type"`
-	Url       string
-	Body      template.HTML
-	View      *View
-}
 
 // A Site holds all the information about this website
 type Site struct {
@@ -70,7 +57,7 @@ func NewSite(content, templates fs.FS) *Site {
 		log.Fatal(err)
 	}
 
-	site.SortedPages = site.sortPages()
+	site.SortedPages = site.sortAllPages()
 	return &site
 }
 
@@ -186,7 +173,7 @@ func (s *Site) createPageFromFile(filePath string) (*Page, error) {
 func (s *Site) getView(pageDir string, templateName string) *View {
 
 	currDir := pageDir
-	for currDir != "." {
+	for currDir != "." && currDir != "/" {
 		tmpl := path.Clean(currDir + "/" + templateName)
 		view, exists := s.StaticViews[tmpl]
 		if exists {
