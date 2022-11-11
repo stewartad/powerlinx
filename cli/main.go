@@ -26,6 +26,7 @@ func main() {
 	content := os.DirFS("data")
 	templates := os.DirFS("templates")
 	assets := os.DirFS("assets")
+	// site := powerlinx.NewSite(content, templates, powerlinx.IncludeDrafts())
 	site := powerlinx.NewSite(content, templates)
 
 	// TODO: add views
@@ -37,6 +38,8 @@ func main() {
 	// y.html for y.md (one-off templates but include base)
 	// x/_index.html for directory
 	// x/_single.html for individual pages in directory
+
+	site.Build()
 
 	err := site.GenerateSite("pub")
 	if err != nil {

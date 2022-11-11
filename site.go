@@ -33,6 +33,7 @@ type Site struct {
 	DynamicViews map[string]*View
 	StaticViews  map[string]*View
 	SortedPages  []*Page
+	Config       *SiteConfig
 }
 
 // NewSite creates a new Site and takes two fs.FS parameters
@@ -40,32 +41,37 @@ type Site struct {
 // templates is a FS containing HTML templates,
 // it's root directory should contain layouts for individual pages
 // and a base/ directory containing layouts for the whole site
-// NewSite automatically loads all contents of data into memory at startup,
-// which makes this unfit for exceptionally large sites
-func NewSite(content, templates fs.FS) *Site {
-	site := Site{
+func NewSite(content, templates fs.FS, opts ...SiteOption) *Site {
+	c := NewConfig()
+	for _, opt := range opts {
+		opt.SetSiteOption(c)
+	}
+	return &Site{
 		content:      content,
 		templates:    templates,
 		PageMap:      make(map[string]*Page),
 		ListPageMap:  make(map[string]*ListPage),
 		DynamicViews: make(map[string]*View),
 		StaticViews:  make(map[string]*View),
+		Config:       c,
 	}
-	err := site.createViewsFromTemplates()
-	if err != nil {
-		log.Fatal(err)
-	}
-	err = site.discoverPages()
-	if err != nil {
-		log.Fatal(err)
-	}
-	err = site.discoverListPages()
-	if err != nil {
-		log.Fatal(err)
-	}
+}
 
-	site.SortedPages = site.sortAllPages()
-	return &site
+// Build will discover templates, create views for the templates, then discover content pages to be parsed, then generate aggregate pages
+func (s *Site) Build() {
+	err := s.createViewsFromTemplates()
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = s.discoverPages()
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = s.discoverListPages()
+	if err != nil {
+		log.Fatal(err)
+	}
+	s.SortedPages = s.sortAllPages()
 }
 
 // AddView adds a view to the site's internal map
@@ -128,7 +134,9 @@ func (s *Site) discoverPages() error {
 		if ferr != nil {
 			return ferr
 		}
-		s.PageMap[page.Url] = page
+		if !page.Draft || s.Config.IncludeDrafts {
+			s.PageMap[page.Url] = page
+		}
 
 		return nil
 	})
@@ -200,6 +208,7 @@ func (s *Site) getView(pageDir string, templateName string) *View {
 }
 
 func (s *Site) getAllPagesInDir(dir string) []*Page {
+	// TODO: check whether to include subdirs or not
 	pages := make([]*Page, 0)
 	for url, page := range s.PageMap {
 		if strings.HasPrefix(url, dir) {
