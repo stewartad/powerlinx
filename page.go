@@ -24,6 +24,7 @@ type Page struct {
 	Title     string    `json:"title"`
 	CreatedAt time.Time `json:"date"`
 	Type      string    `json:"type"`
+	Draft     bool      `json:"draft"`
 	Url       string
 	Body      interface{}
 	View      *View
