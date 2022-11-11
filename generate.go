@@ -57,6 +57,7 @@ func (s *Site) GenerateSite(outdir string) error {
 		log.Println(err)
 	}
 
+	// write out aggregate pages
 	for dir, page := range s.ListPageMap {
 		outPath := path.Clean(path.Join(outdir + dir + string(os.PathSeparator) + "index.html"))
 		outFile, err := createHTMLFile(outPath)
@@ -69,18 +70,14 @@ func (s *Site) GenerateSite(outdir string) error {
 		}
 	}
 
+	// write out single pages, overwriting any generated aggregate pages that have custom implementation
 	for url, page := range s.PageMap {
 		outPath := path.Join(outdir + url + ".html")
 		outFile, err := createHTMLFile(outPath)
 		if err != nil {
 			return err
 		}
-		fileWriter := bufio.NewWriter(outFile)
-		err = page.View.Render(fileWriter, page)
-		if err != nil {
-			return err
-		}
-		err = fileWriter.Flush()
+		err = writeSinglePage(outFile, page)
 		if err != nil {
 			return err
 		}
