@@ -6,7 +6,10 @@ import (
 	"encoding/json"
 	"html/template"
 	"io"
+	"io/fs"
 	"log"
+	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -18,9 +21,14 @@ const TMPL_INDEX = "index"
  * Util functions relating to the creation and parsing of individual pages
  */
 
-// A Page contains metadata and content for a single webpages
+type Page interface {
+	Render(w io.Writer) error
+	// TODO: pass view to render
+}
+
+// A DetailPage contains metadata and content for a single webpages
 // Metadata is standard json surrounded by "---"
-type Page struct {
+type DetailPage struct {
 	Title     string    `json:"title"`
 	CreatedAt time.Time `json:"date"`
 	Type      string    `json:"type"`
@@ -30,16 +38,53 @@ type Page struct {
 	View      *View
 }
 
+func (p *DetailPage) Render(w io.Writer) error {
+	return p.View.Render(w, p)
+}
+
+func NewDetailPage(file fs.File, path string) (*DetailPage, error) {
+	metadata, body := separateMetadata(file)
+	filetype := filepath.Ext(path)
+	page := DetailPage{}
+	if len(metadata) > 0 {
+		err := json.Unmarshal(metadata, &page)
+		if err != nil {
+			return nil, err
+		}
+	}
+	page.Body = convertToHTML(body, filetype)
+	page.Url = strings.TrimSuffix("/"+path, filetype)
+
+	return &page, nil
+}
+
 type ListPage struct {
 	Title string
 	Url   string
-	Pages []*Page
+	Pages []*DetailPage
 	View  *View
 }
 
+func (p *ListPage) Render(w io.Writer) error {
+	return p.View.Render(w, p)
+}
+
+func NewListPage(dir string, title string, pages []*DetailPage) *ListPage {
+	// turn title to title case
+	title = strings.ToUpper(string(title[0])) + string(title[1:])
+	return &ListPage{
+		Title: title,
+		Url:   "/" + dir,
+		Pages: pages,
+	}
+}
+
+type metadata []byte
+type body []byte
+
 // separateMetadata separates JSON metadata from page content.
 // Metadata is at the top of the file, surrounded by "---"
-func separateMetadata(r io.Reader) ([]byte, []byte) {
+func separateMetadata(r io.Reader) (metadata, body) {
 	scanner := bufio.NewScanner(r)
 	metadata := []byte{}
 	body := []byte{}
@@ -60,17 +105,6 @@ func separateMetadata(r io.Reader) ([]byte, []byte) {
 		}
 	}
 	return metadata, body
-}
-
-func parseMetadata(data []byte) (*Page, error) {
-	page := Page{}
-	if len(data) > 0 {
-		err := json.Unmarshal(data, &page)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return &page, nil
 }
 
 func convertToHTML(data []byte, filetype string) template.HTML {

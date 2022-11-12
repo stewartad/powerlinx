@@ -5,7 +5,6 @@ import (
 	"io/fs"
 	"log"
 	"path"
-	"path/filepath"
 	"strings"
 
 	"github.com/yuin/goldmark"
@@ -28,11 +27,11 @@ var markdown = goldmark.New(
 type Site struct {
 	content      fs.FS
 	templates    fs.FS
-	PageMap      map[string]*Page
+	PageMap      map[string]*DetailPage
 	ListPageMap  map[string]*ListPage
 	DynamicViews map[string]*View
 	StaticViews  map[string]*View
-	SortedPages  []*Page
+	SortedPages  []*DetailPage
 	Config       *SiteConfig
 }
 
@@ -49,7 +48,7 @@ func NewSite(content, templates fs.FS, opts ...SiteOption) *Site {
 	return &Site{
 		content:      content,
 		templates:    templates,
-		PageMap:      make(map[string]*Page),
+		PageMap:      make(map[string]*DetailPage),
 		ListPageMap:  make(map[string]*ListPage),
 		DynamicViews: make(map[string]*View),
 		StaticViews:  make(map[string]*View),
@@ -84,8 +83,8 @@ func (s *Site) AddView(name string, v *View) {
 // If pageType is "", Pages of any type are returned
 // The length of the returned slice is either count or the length of s.PageMap,
 // whichever is smaller
-func (s *Site) GetRecentPages(count int, pageType string) []*Page {
-	all := make([]*Page, 0, count)
+func (s *Site) GetRecentPages(count int, pageType string) []*DetailPage {
+	all := make([]*DetailPage, 0, count)
 
 	for _, page := range s.SortedPages {
 		if page.Type == pageType || pageType == "" {
@@ -163,23 +162,17 @@ func (s *Site) discoverListPages() error {
 	return err
 }
 
-func (s *Site) createPageFromFile(filePath string) (*Page, error) {
+func (s *Site) createPageFromFile(filePath string) (*DetailPage, error) {
 	file, err := s.content.Open(filePath)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
 
-	metadata, body := separateMetadata(file)
-	filetype := filepath.Ext(filePath)
-
-	page, err := parseMetadata(metadata)
+	page, err := NewDetailPage(file, filePath)
 	if err != nil {
 		return nil, err
 	}
-
-	page.Body = convertToHTML(body, filetype)
-	page.Url = strings.TrimSuffix("/"+filePath, filetype)
 
 	if path.Base(filePath) == "index.html" {
 		page.View = s.getView(path.Dir(filePath), TMPL_INDEX)
@@ -207,9 +200,9 @@ func (s *Site) getView(pageDir string, templateName string) *View {
 	return s.StaticViews[templateName]
 }
 
-func (s *Site) getAllPagesInDir(dir string) []*Page {
+func (s *Site) getAllPagesInDir(dir string) []*DetailPage {
 	// TODO: check whether to include subdirs or not
-	pages := make([]*Page, 0)
+	pages := make([]*DetailPage, 0)
 	for url, page := range s.PageMap {
 		if strings.HasPrefix(url, dir) {
 			pages = append(pages, page)
@@ -220,11 +213,7 @@ func (s *Site) getAllPagesInDir(dir string) []*Page {
 
 func (s *Site) createListPage(dir string, title string) (*ListPage, error) {
 
-	// turn title to title case
-	title = strings.ToUpper(string(title[0])) + string(title[1:])
-
 	view := s.getView(dir, TMPL_LIST)
-
 	if view == nil {
 		log.Printf("could not find view")
 		// TODO: error
@@ -232,11 +221,8 @@ func (s *Site) createListPage(dir string, title string) (*ListPage, error) {
 	}
 	pages := s.getAllPagesInDir(path.Clean("/" + dir))
 	sortPageList(pages)
-	page := ListPage{
-		Title: title,
-		Url:   "/" + dir,
-		Pages: pages,
-		View:  view,
-	}
-	return &page, nil
+
+	page := NewListPage(dir, title, pages)
+	page.View = view
+	return page, nil
 }
