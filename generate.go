@@ -19,7 +19,7 @@ func createHTMLFile(outPath string) (*os.File, error) {
 	return file, nil
 }
 
-func writeSinglePage(outFile *os.File, page *Page) error {
+func writeSinglePage(outFile *os.File, page *DetailPage) error {
 	fileWriter := bufio.NewWriter(outFile)
 	err := page.View.Render(fileWriter, page)
 	if err != nil {
@@ -61,6 +61,7 @@ func (s *Site) GenerateSite(outdir string) error {
 	for dir, page := range s.ListPageMap {
 		outPath := path.Clean(path.Join(outdir + dir + string(os.PathSeparator) + "index.html"))
 		outFile, err := createHTMLFile(outPath)
+		defer outFile.Close()
 		if err != nil {
 			return err
 		}
@@ -74,6 +75,7 @@ func (s *Site) GenerateSite(outdir string) error {
 	for url, page := range s.PageMap {
 		outPath := path.Join(outdir + url + ".html")
 		outFile, err := createHTMLFile(outPath)
+		defer outFile.Close()
 		if err != nil {
 			return err
 		}
