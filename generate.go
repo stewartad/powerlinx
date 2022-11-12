@@ -61,10 +61,10 @@ func (s *Site) GenerateSite(outdir string) error {
 	for dir, page := range s.ListPageMap {
 		outPath := path.Clean(path.Join(outdir + dir + string(os.PathSeparator) + "index.html"))
 		outFile, err := createHTMLFile(outPath)
-		defer outFile.Close()
 		if err != nil {
 			return err
 		}
+		defer outFile.Close()
 		err = writeListPage(outFile, page)
 		if err != nil {
 			return err
