@@ -35,7 +35,6 @@ type DetailPage struct {
 	Draft       bool      `json:"draft"`
 	Url         string
 	Body        interface{}
-	View        *View
 	Template    *SiteTemplate
 }
 
@@ -91,7 +90,6 @@ type ListPage struct {
 	Title    string
 	Url      string
 	Pages    []*DetailPage
-	View     *View
 	Template *SiteTemplate
 }
 

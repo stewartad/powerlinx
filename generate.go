@@ -19,33 +19,6 @@ func createHTMLFile(outPath string) (*os.File, error) {
 	return file, nil
 }
 
-func writeSinglePage(outFile *os.File, page *DetailPage) error {
-	fileWriter := bufio.NewWriter(outFile)
-	err := page.View.Render(fileWriter, page)
-	if err != nil {
-		return err
-	}
-	err = fileWriter.Flush()
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func writeListPage(outFile *os.File, page *ListPage) error {
-	// TODO: Page interface that Page (SinglePage) and ListPage implement
-	fileWriter := bufio.NewWriter(outFile)
-	err := page.View.Render(fileWriter, page)
-	if err != nil {
-		return err
-	}
-	err = fileWriter.Flush()
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 func writePage(outFile *os.File, page Page) error {
 	fileWriter := bufio.NewWriter(outFile)
 	err := page.Render(fileWriter)

@@ -27,12 +27,10 @@ var markdown = goldmark.New(
 
 // A Site holds all the information about this website
 type Site struct {
-	content       fs.FS
-	templates     fs.FS
+	contentFs     fs.FS
+	templatesFs   fs.FS
 	PageMap       map[string]*DetailPage
 	ListPageMap   map[string]*ListPage
-	DynamicViews  map[string]*View
-	StaticViews   map[string]*View
 	SortedPages   []*DetailPage
 	Config        *SiteConfig
 	SiteTemplates map[string]*SiteTemplate
@@ -49,12 +47,10 @@ func NewSite(content, templates fs.FS, opts ...SiteOption) *Site {
 		opt.SetSiteOption(c)
 	}
 	return &Site{
-		content:       content,
-		templates:     templates,
+		contentFs:     content,
+		templatesFs:   templates,
 		PageMap:       map[string]*DetailPage{},
 		ListPageMap:   map[string]*ListPage{},
-		DynamicViews:  map[string]*View{},
-		StaticViews:   map[string]*View{},
 		SiteTemplates: map[string]*SiteTemplate{},
 		Config:        c,
 	}
@@ -62,10 +58,6 @@ func NewSite(content, templates fs.FS, opts ...SiteOption) *Site {
 
 // Build will discover templates, create views for the templates, then discover content pages to be parsed, then generate aggregate pages
 func (s *Site) Build() {
-	// err := s.createViewsFromTemplates()
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
 	log.Println("Discovering Templates")
 	err := s.discoverTemplates()
 	if err != nil {
@@ -83,11 +75,6 @@ func (s *Site) Build() {
 		log.Fatal(err)
 	}
 	s.SortedPages = s.sortAllPages()
-}
-
-// AddView adds a view to the site's internal map
-func (s *Site) AddView(name string, v *View) {
-	s.DynamicViews[name] = v
 }
 
 // GetRecentPages returns a slice of Pages of the specified pageType,
@@ -162,30 +149,8 @@ func (t *SiteTemplate) ParseTemplate(fs fs.FS) error {
 	return nil
 }
 
-// looks for _index.html and _single.html
-//
-func (s *Site) createViewsFromTemplates() error {
-	// walk template directory
-	err := fs.WalkDir(s.templates, ".", func(filePath string, d fs.DirEntry, err error) error {
-		if err != nil {
-			log.Fatalln(err)
-		}
-		// skip base templates
-		if d.IsDir() || strings.Contains(filePath, "base") {
-			return nil
-		}
-
-		tmplType := strings.TrimPrefix(strings.TrimSuffix(path.Base(filePath), ".html"), "_")
-		viewName := path.Clean(strings.TrimPrefix(path.Dir(filePath)+"/"+tmplType, "./"))
-		s.StaticViews[viewName] = s.NewView("layout.html", path.Clean(filePath))
-
-		return nil
-	})
-	return err
-}
-
 func (s *Site) discoverTemplates() error {
-	err := fs.WalkDir(s.templates, ".", func(filePath string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(s.templatesFs, ".", func(filePath string, d fs.DirEntry, err error) error {
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -196,7 +161,7 @@ func (s *Site) discoverTemplates() error {
 
 		tmpl := NewSiteTemplate(filePath)
 		tmpl.Layout = baseLayout
-		perr := tmpl.ParseTemplate(s.templates)
+		perr := tmpl.ParseTemplate(s.templatesFs)
 		if err != nil {
 			return perr
 		}
@@ -208,7 +173,7 @@ func (s *Site) discoverTemplates() error {
 }
 
 func (s *Site) discoverPages() error {
-	err := fs.WalkDir(s.content, ".", func(path string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(s.contentFs, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -233,7 +198,7 @@ func (s *Site) discoverPages() error {
 }
 
 func (s *Site) discoverListPages() error {
-	err := fs.WalkDir(s.content, ".", func(path string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(s.contentFs, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -252,7 +217,7 @@ func (s *Site) discoverListPages() error {
 }
 
 func (s *Site) createPageFromFile(filePath string) (*DetailPage, error) {
-	file, err := s.content.Open(filePath)
+	file, err := s.contentFs.Open(filePath)
 	if err != nil {
 		return nil, err
 	}
@@ -266,20 +231,6 @@ func (s *Site) createPageFromFile(filePath string) (*DetailPage, error) {
 		return nil, err
 	}
 	return page, nil
-}
-
-func (s *Site) getView(pageDir string, templateName string) *View {
-
-	currDir := pageDir
-	for currDir != "." && currDir != "/" {
-		tmpl := path.Clean(currDir + "/" + templateName)
-		view, exists := s.StaticViews[tmpl]
-		if exists {
-			return view
-		}
-		currDir = path.Dir(currDir)
-	}
-	return s.StaticViews[templateName]
 }
 
 // starting with the deepest possible template location and moving up, search for existing templates
@@ -313,14 +264,6 @@ func (s *Site) getAllPagesInDir(dir string) []*DetailPage {
 }
 
 func (s *Site) createListPage(dir string, title string) (*ListPage, error) {
-
-	// view := s.getView(dir, string(TMPL_LIST))
-
-	// if view == nil {
-	// 	log.Printf("could not find view")
-	// 	// TODO: error
-	// 	return nil, errors.New("could not find view")
-	// }
 	pages := s.getAllPagesInDir(path.Clean("/" + dir))
 	sortPageList(pages)
 
