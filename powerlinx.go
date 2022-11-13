@@ -29,7 +29,6 @@ var markdown = goldmark.New(
 	),
 	goldmark.WithRendererOptions(
 		html.WithHardWraps(),
-		html.WithUnsafe(),
 	),
 )
 
@@ -74,7 +73,7 @@ type Site struct {
 // NewSite creates a new Site and takes two fs.FS parameters
 // content is a FS containing  all your content
 // templates is a FS containing HTML templates,
-// it's root directory should contain layouts for individual pages
+// its root directory should contain layouts for individual pages
 // and a base/ directory containing layouts for the whole site
 func NewSite(content, templates fs.FS, opts ...SiteOption) *Site {
 	c := NewConfig()
@@ -194,11 +193,12 @@ type Page interface {
 	getTemplate() *SiteTemplate
 }
 
-func tmplType(p Page) templateType { return p.templateType() }
-func getUrl(p Page) string         { return p.path() }
-func isHidden(p Page) bool         { return p.hidden() }
-func getDate(p Page) time.Time     { return p.date() }
-func getContentType(p Page) string { return p.getContentType() }
+func tmplType(p Page) templateType     { return p.templateType() }
+func getUrl(p Page) string             { return p.path() }
+func isHidden(p Page) bool             { return p.hidden() }
+func getDate(p Page) time.Time         { return p.date() }
+func getContentType(p Page) string     { return p.getContentType() }
+func getTemplate(p Page) *SiteTemplate { return p.getTemplate() }
 
 func (s *Site) sortAllPages() []Page {
 	all := make([]Page, 0, len(s.PageMap))
@@ -315,14 +315,18 @@ func (p ListPage) getContentType() string { return "list" }
 func (p ListPage) getTemplate() *SiteTemplate { return p.Template }
 
 func (p ListPage) content() interface{} {
+	pageContent := []interface{}{}
+	for _, page := range p.Pages {
+		pageContent = append(pageContent, page.content())
+	}
 	return struct {
 		Title string
 		Url   string
-		Pages []Page
+		Pages []interface{}
 	}{
 		Title: p.Title,
 		Url:   p.Url,
-		Pages: p.Pages,
+		Pages: pageContent,
 	}
 }
 
@@ -331,7 +335,7 @@ func NewListPage(dir string, title string, pages []Page) ListPage {
 	title = strings.ToUpper(string(title[0])) + string(title[1:])
 	return ListPage{
 		Title: title,
-		Url:   "/" + dir,
+		Url:   path.Join("/"+dir, "index"),
 		Pages: pages,
 	}
 }
@@ -419,9 +423,9 @@ func (s *Site) discoverPages() error {
 		if ferr != nil {
 			return ferr
 		}
-		log.Printf("Discovered Page %s, Url %s, Template %s", path, getUrl(page), page.getTemplate().Path)
 		if !isHidden(page) || s.Config.IncludeHidden {
 			s.PageMap[getUrl(page)] = page
+			log.Printf("Discovered Page %s, Url %s, Template %s", path, getUrl(page), getTemplate(page).Path)
 		}
 
 		return nil
@@ -430,8 +434,19 @@ func (s *Site) discoverPages() error {
 	return err
 }
 
+func (s *Site) getAllPagesInDir(dir string) []Page {
+	// TODO: check whether to include subdirs or not
+	pages := make([]Page, 0)
+	for url, page := range s.PageMap {
+		if strings.HasPrefix(url, dir) {
+			pages = append(pages, page)
+		}
+	}
+	return pages
+}
+
 func (s *Site) generateListPages() error {
-	err := fs.WalkDir(s.contentFs, ".", func(path string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(s.contentFs, ".", func(filePath string, d fs.DirEntry, err error) error {
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -439,16 +454,24 @@ func (s *Site) generateListPages() error {
 			return nil
 		}
 
-		page, ferr := s.createListPage(path, d.Name())
+		pages := s.getAllPagesInDir("/" + filePath)
+		sortPageList(pages)
+
+		page := NewListPage(filePath, d.Name(), pages)
+		template, ferr := s.getTemplate(page)
 		if ferr != nil {
 			return ferr
 		}
+		page.Template = template
+
 		// only generate if page doesn't already exist
-		_, exists := s.PageMap[getUrl(page)]
+		currPage, exists := s.PageMap[getUrl(page)]
 		if exists {
+			log.Printf("Page already exists, skipped %s, using template %s", getUrl(currPage), getTemplate(currPage).Path)
 			return nil
 		}
 		s.PageMap[getUrl(page)] = page
+		log.Printf("Generated Page %s, Template %s", getUrl(page), page.Template.Path)
 		return nil
 	})
 	return err
@@ -474,7 +497,7 @@ func (s *Site) createPageFromFile(filePath string) (Page, error) {
 // starting with the deepest possible template location and moving up, search for existing templates
 func (s *Site) getTemplate(p Page) (*SiteTemplate, error) {
 	tmplName := tmplType(p).FileName()
-	tmplDir := path.Dir(getUrl(p))
+	tmplDir := strings.TrimPrefix(path.Dir(getUrl(p)), "/")
 	for tmplDir != "." && tmplDir != "/" {
 		tmplPath := path.Join(tmplDir, tmplName)
 		template, exists := s.SiteTemplates[tmplPath]
@@ -488,30 +511,6 @@ func (s *Site) getTemplate(p Page) (*SiteTemplate, error) {
 		return nil, errors.New("Can't find base template " + tmplName)
 	}
 	return template, nil
-}
-
-func (s *Site) getAllPagesInDir(dir string) []Page {
-	// TODO: check whether to include subdirs or not
-	pages := make([]Page, 0)
-	for url, page := range s.PageMap {
-		if strings.HasPrefix(url, dir) {
-			pages = append(pages, page)
-		}
-	}
-	return pages
-}
-
-func (s *Site) createListPage(dir string, title string) (Page, error) {
-	pages := s.getAllPagesInDir(path.Clean("/" + dir))
-	sortPageList(pages)
-
-	page := NewListPage(dir, title, pages)
-	template, err := s.getTemplate(page)
-	if err != nil {
-		return nil, err
-	}
-	page.Template = template
-	return page, nil
 }
 
 func createHTMLFile(outPath string) (*os.File, error) {
