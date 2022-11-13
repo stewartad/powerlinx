@@ -1,13 +1,21 @@
 package powerlinx
 
 import (
+	"bufio"
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
+	"io"
 	"io/fs"
 	"log"
+	"os"
 	"path"
+	"path/filepath"
+	"sort"
 	"strings"
-	"text/template"
+	"time"
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
@@ -24,6 +32,34 @@ var markdown = goldmark.New(
 		html.WithUnsafe(),
 	),
 )
+
+type OptionName string
+
+type SiteConfig struct {
+	IncludeHidden bool
+}
+
+func NewConfig() *SiteConfig {
+	return &SiteConfig{
+		IncludeHidden: false,
+	}
+}
+
+type SiteOption interface {
+	SetSiteOption(*SiteConfig)
+}
+
+type includeDrafts struct{}
+
+func (o *includeDrafts) SetSiteOption(c *SiteConfig) {
+	c.IncludeHidden = true
+}
+
+func IncludeDrafts() interface {
+	SiteOption
+} {
+	return &includeDrafts{}
+}
 
 // A Site holds all the information about this website
 type Site struct {
@@ -68,7 +104,7 @@ func (s *Site) Build() {
 	}
 
 	log.Println("Discovering ListPages")
-	err = s.discoverListPages()
+	err = s.generateListPages()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -147,6 +183,205 @@ func (t *SiteTemplate) ParseTemplate(fs fs.FS) error {
 	return nil
 }
 
+type Page interface {
+	Render(w io.Writer) error
+	templateType() templateType
+	path() string // rename to Url()
+	hidden() bool
+	content() interface{}
+	date() time.Time
+	getContentType() string
+	getTemplate() *SiteTemplate
+}
+
+func tmplType(p Page) templateType { return p.templateType() }
+func getUrl(p Page) string         { return p.path() }
+func isHidden(p Page) bool         { return p.hidden() }
+func getDate(p Page) time.Time     { return p.date() }
+func getContentType(p Page) string { return p.getContentType() }
+
+func (s *Site) sortAllPages() []Page {
+	all := make([]Page, 0, len(s.PageMap))
+	for _, value := range s.PageMap {
+		all = append(all, value)
+	}
+	sort.Sort(byTime(all))
+	return all
+}
+
+func sortPageList(pages []Page) []Page {
+	sort.Sort(byTime(pages))
+	return pages
+}
+
+// Create Sort Interface for Pages
+type byTime []Page
+
+func (t byTime) Len() int {
+	return len(t)
+}
+
+func (t byTime) Swap(i, j int) {
+	t[i], t[j] = t[j], t[i]
+}
+
+func (t byTime) Less(i, j int) bool {
+	return getDate(t[j]).Before(getDate(t[i]))
+}
+
+// A DetailPage contains metadata and content for a single webpages
+// Metadata is standard json surrounded by "---"
+type DetailPage struct {
+	Title       string    `json:"title"`
+	CreatedAt   time.Time `json:"date"`
+	ContentType string    `json:"type"`
+	Draft       bool      `json:"draft"`
+	Url         string
+	Body        interface{}
+	Template    *SiteTemplate
+}
+
+func (p DetailPage) Render(w io.Writer) error {
+	return p.Template.Template.ExecuteTemplate(w, string(p.Template.Layout), p.content())
+}
+
+func (p DetailPage) templateType() templateType {
+	if path.Base(p.Url) == "index" {
+		return TMPL_INDEX
+	}
+	return TMPL_PAGE
+}
+
+func (p DetailPage) path() string { return p.Url }
+
+func (p DetailPage) hidden() bool { return p.Draft }
+
+func (p DetailPage) date() time.Time { return p.CreatedAt }
+
+func (p DetailPage) getContentType() string { return p.ContentType }
+
+func (p DetailPage) getTemplate() *SiteTemplate { return p.Template }
+
+func (p DetailPage) content() interface{} {
+	return struct {
+		Title     string
+		CreatedAt time.Time
+		Url       string
+		Body      interface{}
+	}{
+		Title:     p.Title,
+		CreatedAt: p.CreatedAt,
+		Url:       p.Url,
+		Body:      p.Body,
+	}
+}
+
+func NewDetailPage(file fs.File, path string) (DetailPage, error) {
+	metadata, body := separateMetadata(file)
+	filetype := filepath.Ext(path)
+	page := DetailPage{}
+	if len(metadata) > 0 {
+		err := json.Unmarshal(metadata, &page)
+		if err != nil {
+			return DetailPage{}, err
+		}
+	}
+	page.Body = convertToHTML(body, filetype)
+	page.Url = strings.TrimSuffix("/"+path, filetype)
+	return page, nil
+}
+
+type ListPage struct {
+	Title    string
+	Url      string
+	Pages    []Page
+	Template *SiteTemplate
+}
+
+func (p ListPage) Render(w io.Writer) error {
+	return p.Template.Template.ExecuteTemplate(w, string(p.Template.Layout), p.content())
+}
+
+func (p ListPage) templateType() templateType { return TMPL_LIST }
+
+func (p ListPage) path() string { return p.Url }
+
+func (p ListPage) hidden() bool { return false }
+
+func (p ListPage) date() time.Time { return time.Now() }
+
+func (p ListPage) getContentType() string { return "list" }
+
+func (p ListPage) getTemplate() *SiteTemplate { return p.Template }
+
+func (p ListPage) content() interface{} {
+	return struct {
+		Title string
+		Url   string
+		Pages []Page
+	}{
+		Title: p.Title,
+		Url:   p.Url,
+		Pages: p.Pages,
+	}
+}
+
+func NewListPage(dir string, title string, pages []Page) ListPage {
+	// turn title to title case
+	title = strings.ToUpper(string(title[0])) + string(title[1:])
+	return ListPage{
+		Title: title,
+		Url:   "/" + dir,
+		Pages: pages,
+	}
+}
+
+type metadata []byte
+type body []byte
+
+// separateMetadata separates JSON metadata from page content.
+// Metadata is at the top of the file, surrounded by "---"
+func separateMetadata(r io.Reader) (metadata, body) {
+	scanner := bufio.NewScanner(r)
+	metadata := []byte{}
+	body := []byte{}
+	// separate metadata and content
+	count := 0 // counter for metadata delimiter, expecting either zero or two
+	for scanner.Scan() {
+		if scanner.Text() == "---" {
+			count++
+			continue
+		}
+		if 0 < count && count < 2 {
+			metadataBytes := scanner.Bytes()
+			metadata = append(metadata, metadataBytes...)
+		} else {
+			contentBytes := scanner.Bytes()
+			body = append(body, contentBytes...)
+			body = append(body, '\n')
+		}
+	}
+	return metadata, body
+}
+
+func convertToHTML(data []byte, filetype string) template.HTML {
+	// if md, parse to html
+	// if html, parse as-is
+	if filetype == ".md" {
+		var buf bytes.Buffer
+		if err := markdown.Convert(data, &buf); err != nil {
+			log.Panic(err)
+		}
+		return template.HTML(buf.String())
+
+	} else if filetype == ".html" {
+		return template.HTML(string(data))
+	} else {
+		log.Printf("Invalid filetype %s\n", filetype)
+	}
+	return ""
+}
+
 func (s *Site) discoverTemplates() error {
 	err := fs.WalkDir(s.templatesFs, ".", func(filePath string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -195,7 +430,7 @@ func (s *Site) discoverPages() error {
 	return err
 }
 
-func (s *Site) discoverListPages() error {
+func (s *Site) generateListPages() error {
 	err := fs.WalkDir(s.contentFs, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			log.Fatal(err)
@@ -277,4 +512,55 @@ func (s *Site) createListPage(dir string, title string) (Page, error) {
 	}
 	page.Template = template
 	return page, nil
+}
+
+func createHTMLFile(outPath string) (*os.File, error) {
+	err := os.MkdirAll(path.Dir(outPath), 0755)
+	if err != nil && !os.IsExist(err) {
+		return nil, err
+	}
+	file, err := os.Create(outPath)
+	if err != nil {
+		return nil, err
+	}
+	return file, nil
+}
+
+func writePage(outFile *os.File, page Page) error {
+	fileWriter := bufio.NewWriter(outFile)
+	err := page.Render(fileWriter)
+	if err != nil {
+		return err
+	}
+	err = fileWriter.Flush()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Site) GenerateSite(outdir string) error {
+	err := os.RemoveAll(outdir)
+	if err != nil {
+		log.Println("could not delete pub")
+	}
+
+	err = os.Mkdir(outdir, 0755)
+	if err != nil && !os.IsExist(err) {
+		log.Println(err)
+	}
+
+	for url, page := range s.PageMap {
+		outPath := path.Join(outdir + url + ".html")
+		outFile, err := createHTMLFile(outPath)
+		if err != nil {
+			return err
+		}
+		defer outFile.Close()
+		err = writePage(outFile, page)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
