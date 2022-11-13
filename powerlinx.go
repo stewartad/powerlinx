@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gorilla/feeds"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/renderer/html"
@@ -36,11 +37,13 @@ type OptionName string
 
 type SiteConfig struct {
 	IncludeHidden bool
+	BaseUrl       string
 }
 
 func NewConfig() *SiteConfig {
 	return &SiteConfig{
 		IncludeHidden: false,
+		BaseUrl:       "localhost:8080",
 	}
 }
 
@@ -58,6 +61,22 @@ func IncludeDrafts() interface {
 	SiteOption
 } {
 	return &includeDrafts{}
+}
+
+type setBaseUrl struct {
+	url string
+}
+
+func (o *setBaseUrl) SetSiteOption(c *SiteConfig) {
+	c.BaseUrl = o.url
+}
+
+func SetBaseUrl(url string) interface {
+	SiteOption
+} {
+	return &setBaseUrl{
+		url: url,
+	}
 }
 
 // A Site holds all the information about this website
@@ -89,25 +108,27 @@ func NewSite(content, templates fs.FS, opts ...SiteOption) *Site {
 	}
 }
 
-// Build will discover templates, create views for the templates, then discover content pages to be parsed, then generate aggregate pages
-func (s *Site) Build() {
+// Build will discover templates, discover individual pages, then generate ListPages for each
+// directory in s.contentFs that does not have an index.html or index.md file
+func (s *Site) Build() error {
 	log.Println("Discovering Templates")
 	err := s.discoverTemplates()
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	log.Println("Discovering Pages")
 	err = s.discoverPages()
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	log.Println("Discovering ListPages")
 	err = s.generateListPages()
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	s.SortedPages = s.sortAllPages()
+	return nil
 }
 
 // GetRecentPages returns a slice of Pages of the specified pageType,
@@ -185,12 +206,13 @@ func (t *SiteTemplate) ParseTemplate(fs fs.FS) error {
 type Page interface {
 	Render(w io.Writer) error
 	templateType() templateType
-	path() string // rename to Url()
+	path() string
 	hidden() bool
 	content() interface{}
 	date() time.Time
 	getContentType() string
 	getTemplate() *SiteTemplate
+	title() string
 }
 
 func tmplType(p Page) templateType     { return p.templateType() }
@@ -199,6 +221,7 @@ func isHidden(p Page) bool             { return p.hidden() }
 func getDate(p Page) time.Time         { return p.date() }
 func getContentType(p Page) string     { return p.getContentType() }
 func getTemplate(p Page) *SiteTemplate { return p.getTemplate() }
+func getTitle(p Page) string           { return p.title() }
 
 func (s *Site) sortAllPages() []Page {
 	all := make([]Page, 0, len(s.PageMap))
@@ -262,6 +285,8 @@ func (p DetailPage) getContentType() string { return p.ContentType }
 
 func (p DetailPage) getTemplate() *SiteTemplate { return p.Template }
 
+func (p DetailPage) title() string { return p.Title }
+
 func (p DetailPage) content() interface{} {
 	return struct {
 		Title     string
@@ -313,6 +338,8 @@ func (p ListPage) date() time.Time { return time.Now() }
 func (p ListPage) getContentType() string { return "list" }
 
 func (p ListPage) getTemplate() *SiteTemplate { return p.Template }
+
+func (p ListPage) title() string { return p.Title }
 
 func (p ListPage) content() interface{} {
 	pageContent := []interface{}{}
@@ -513,7 +540,7 @@ func (s *Site) getTemplate(p Page) (*SiteTemplate, error) {
 	return template, nil
 }
 
-func createHTMLFile(outPath string) (*os.File, error) {
+func createFile(outPath string) (*os.File, error) {
 	err := os.MkdirAll(path.Dir(outPath), 0755)
 	if err != nil && !os.IsExist(err) {
 		return nil, err
@@ -538,6 +565,7 @@ func writePage(outFile *os.File, page Page) error {
 	return nil
 }
 
+// GenerateSite writes the fully rendered HTML pages of the site to directory outdir
 func (s *Site) GenerateSite(outdir string) error {
 	err := os.RemoveAll(outdir)
 	if err != nil {
@@ -551,7 +579,7 @@ func (s *Site) GenerateSite(outdir string) error {
 
 	for url, page := range s.PageMap {
 		outPath := path.Join(outdir + url + ".html")
-		outFile, err := createHTMLFile(outPath)
+		outFile, err := createFile(outPath)
 		if err != nil {
 			return err
 		}
@@ -562,4 +590,39 @@ func (s *Site) GenerateSite(outdir string) error {
 		}
 	}
 	return nil
+}
+
+func (s *Site) GenerateFeed(pageDir string, outdir string, f *feeds.Feed) error {
+	pages := s.getAllPagesInDir(pageDir)
+	f.Items = []*feeds.Item{}
+	for _, p := range pages {
+		if path.Base(getUrl(p)) != "index" {
+			item := &feeds.Item{
+				Title:   getTitle(p),
+				Created: getDate(p),
+				Link:    &feeds.Link{Href: "http://" + path.Join(s.Config.BaseUrl, getUrl(p))},
+			}
+			f.Items = append(f.Items, item)
+		}
+	}
+	atom, err := f.ToAtom()
+	if err != nil {
+		log.Fatal(err)
+	}
+	outFile, err := createFile(path.Join(outdir, "feed.xml"))
+	if err != nil {
+		return err
+	}
+	defer outFile.Close()
+	fileWriter := bufio.NewWriter(outFile)
+	_, err = fileWriter.WriteString(atom)
+	if err != nil {
+		return err
+	}
+	err = fileWriter.Flush()
+	if err != nil {
+		return err
+	}
+	return nil
+
 }

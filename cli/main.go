@@ -4,7 +4,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
+	"github.com/gorilla/feeds"
 	"github.com/stewartad/powerlinx"
 )
 
@@ -34,13 +36,30 @@ func main() {
 	// maybe apply templates of the same name as the directory?
 	//
 
-	site.Build()
-
-	err := site.GenerateSite("pub")
+	log.Println("Generating Site in ./pub")
+	err := site.Build()
 	if err != nil {
 		panic(err)
 	}
-	log.Println("Generated site in ./pub")
+
+	err = site.GenerateSite("pub")
+	if err != nil {
+		panic(err)
+	}
+	log.Println("Generating Feed in ./pub")
+
+	now := time.Now()
+	feed := &feeds.Feed{
+		Title:       "yequari's blog",
+		Link:        &feeds.Link{Href: "http://" + site.Config.BaseUrl},
+		Description: "thoughts about anything and nothing",
+		Author:      &feeds.Author{Name: "yequari"},
+		Created:     now,
+	}
+	err = site.GenerateFeed("/blog", "pub", feed)
+	if err != nil {
+		panic(err)
+	}
 
 	fileserver := http.FileServer(HTMLDir{http.Dir("pub/")})
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(assets))))
