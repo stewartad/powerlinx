@@ -89,7 +89,8 @@ func NewSite(content, templates fs.FS, opts ...SiteOption) *Site {
 	}
 }
 
-// Build will discover templates, create views for the templates, then discover content pages to be parsed, then generate aggregate pages
+// Build will discover templates, discover individual pages, then generate ListPages for each
+// directory in s.contentFs that does not have an index.html or index.md file
 func (s *Site) Build() {
 	log.Println("Discovering Templates")
 	err := s.discoverTemplates()
@@ -185,7 +186,7 @@ func (t *SiteTemplate) ParseTemplate(fs fs.FS) error {
 type Page interface {
 	Render(w io.Writer) error
 	templateType() templateType
-	path() string // rename to Url()
+	path() string
 	hidden() bool
 	content() interface{}
 	date() time.Time
@@ -538,6 +539,7 @@ func writePage(outFile *os.File, page Page) error {
 	return nil
 }
 
+// GenerateSite writes the fully rendered HTML pages of the site to directory outdir
 func (s *Site) GenerateSite(outdir string) error {
 	err := os.RemoveAll(outdir)
 	if err != nil {
