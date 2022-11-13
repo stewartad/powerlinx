@@ -3,12 +3,12 @@ package powerlinx
 type OptionName string
 
 type SiteConfig struct {
-	IncludeDrafts bool
+	IncludeHidden bool
 }
 
 func NewConfig() *SiteConfig {
 	return &SiteConfig{
-		IncludeDrafts: false,
+		IncludeHidden: false,
 	}
 }
 
@@ -19,7 +19,7 @@ type SiteOption interface {
 type includeDrafts struct{}
 
 func (o *includeDrafts) SetSiteOption(c *SiteConfig) {
-	c.IncludeDrafts = true
+	c.IncludeHidden = true
 }
 
 func IncludeDrafts() interface {

@@ -8,14 +8,11 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
 )
-
-const TMPL_PAGE = "single"
-const TMPL_LIST = "list"
-const TMPL_INDEX = "index"
 
 /*
  * Util functions relating to the creation and parsing of individual pages
@@ -23,23 +20,56 @@ const TMPL_INDEX = "index"
 
 type Page interface {
 	Render(w io.Writer) error
-	// TODO: pass view to render
+	Type() templateType
+	Path() string // rename to Url()
+	Hidden() bool
+	Content() interface{}
 }
 
 // A DetailPage contains metadata and content for a single webpages
 // Metadata is standard json surrounded by "---"
 type DetailPage struct {
-	Title     string    `json:"title"`
-	CreatedAt time.Time `json:"date"`
-	Type      string    `json:"type"`
-	Draft     bool      `json:"draft"`
-	Url       string
-	Body      interface{}
-	View      *View
+	Title       string    `json:"title"`
+	CreatedAt   time.Time `json:"date"`
+	ContentType string    `json:"type"`
+	Draft       bool      `json:"draft"`
+	Url         string
+	Body        interface{}
+	View        *View
+	Template    *SiteTemplate
 }
 
 func (p *DetailPage) Render(w io.Writer) error {
-	return p.View.Render(w, p)
+	return p.Template.Template.ExecuteTemplate(w, string(p.Template.Layout), p.Content())
+}
+
+func (p *DetailPage) Type() templateType {
+	if path.Base(p.Url) == "index" {
+		return TMPL_INDEX
+	}
+	return TMPL_PAGE
+}
+
+func (p *DetailPage) Path() string {
+	return p.Url
+}
+
+func (p *DetailPage) Hidden() bool {
+	return p.Draft
+}
+
+func (p *DetailPage) Content() interface{} {
+	return struct {
+		Title     string
+		CreatedAt time.Time
+		Url       string
+		Body      interface{}
+	}{
+		Title:     p.Title,
+		CreatedAt: p.CreatedAt,
+		Url:       p.Url,
+		Body:      p.Body,
+	}
 }
 
 func NewDetailPage(file fs.File, path string) (*DetailPage, error) {
@@ -54,19 +84,52 @@ func NewDetailPage(file fs.File, path string) (*DetailPage, error) {
 	}
 	page.Body = convertToHTML(body, filetype)
 	page.Url = strings.TrimSuffix("/"+path, filetype)
-
 	return &page, nil
 }
 
 type ListPage struct {
-	Title string
-	Url   string
-	Pages []*DetailPage
-	View  *View
+	Title    string
+	Url      string
+	Pages    []*DetailPage
+	View     *View
+	Template *SiteTemplate
 }
 
 func (p *ListPage) Render(w io.Writer) error {
-	return p.View.Render(w, p)
+	return p.Template.Template.ExecuteTemplate(w, string(p.Template.Layout), p.Content())
+}
+
+func (p *ListPage) Type() templateType {
+	return TMPL_LIST
+}
+
+func (p *ListPage) Path() string {
+	return p.Url
+}
+
+func (p *ListPage) GetTemplatePath() string {
+	tmplName := p.Type().FileName()
+	dir := path.Dir(p.Path())
+	if dir == "." {
+		return tmplName
+	}
+	return path.Join(dir, tmplName)
+}
+
+func (p *ListPage) Hidden() bool {
+	return false
+}
+
+func (p *ListPage) Content() interface{} {
+	return struct {
+		Title string
+		Url   string
+		Pages []*DetailPage
+	}{
+		Title: p.Title,
+		Url:   p.Url,
+		Pages: p.Pages,
+	}
 }
 
 func NewListPage(dir string, title string, pages []*DetailPage) *ListPage {

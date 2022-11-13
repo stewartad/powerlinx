@@ -46,6 +46,19 @@ func writeListPage(outFile *os.File, page *ListPage) error {
 	return nil
 }
 
+func writePage(outFile *os.File, page Page) error {
+	fileWriter := bufio.NewWriter(outFile)
+	err := page.Render(fileWriter)
+	if err != nil {
+		return err
+	}
+	err = fileWriter.Flush()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (s *Site) GenerateSite(outdir string) error {
 	err := os.RemoveAll(outdir)
 	if err != nil {
@@ -65,7 +78,8 @@ func (s *Site) GenerateSite(outdir string) error {
 			return err
 		}
 		defer outFile.Close()
-		err = writeListPage(outFile, page)
+		// err = writeListPage(outFile, page)
+		err = writePage(outFile, page)
 		if err != nil {
 			return err
 		}
@@ -75,11 +89,12 @@ func (s *Site) GenerateSite(outdir string) error {
 	for url, page := range s.PageMap {
 		outPath := path.Join(outdir + url + ".html")
 		outFile, err := createHTMLFile(outPath)
-		defer outFile.Close()
 		if err != nil {
 			return err
 		}
-		err = writeSinglePage(outFile, page)
+		defer outFile.Close()
+		// err = writeSinglePage(outFile, page)
+		err = writePage(outFile, page)
 		if err != nil {
 			return err
 		}

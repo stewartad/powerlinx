@@ -33,11 +33,6 @@ func main() {
 	// need a way to automatically detect which pages have special templates
 	// maybe apply templates of the same name as the directory?
 	//
-	// _index.html for index
-	// _single.html for one-off pages
-	// y.html for y.md (one-off templates but include base)
-	// x/_index.html for directory
-	// x/_single.html for individual pages in directory
 
 	site.Build()
 
