@@ -20,11 +20,20 @@ import (
 
 type Page interface {
 	Render(w io.Writer) error
-	Type() templateType
-	Path() string // rename to Url()
-	Hidden() bool
-	Content() interface{}
+	templateType() templateType
+	path() string // rename to Url()
+	hidden() bool
+	content() interface{}
+	date() time.Time
+	getContentType() string
+	getTemplate() *SiteTemplate
 }
+
+func tmplType(p Page) templateType { return p.templateType() }
+func getUrl(p Page) string         { return p.path() }
+func isHidden(p Page) bool         { return p.hidden() }
+func getDate(p Page) time.Time     { return p.date() }
+func getContentType(p Page) string { return p.getContentType() }
 
 // A DetailPage contains metadata and content for a single webpages
 // Metadata is standard json surrounded by "---"
@@ -38,26 +47,28 @@ type DetailPage struct {
 	Template    *SiteTemplate
 }
 
-func (p *DetailPage) Render(w io.Writer) error {
-	return p.Template.Template.ExecuteTemplate(w, string(p.Template.Layout), p.Content())
+func (p DetailPage) Render(w io.Writer) error {
+	return p.Template.Template.ExecuteTemplate(w, string(p.Template.Layout), p.content())
 }
 
-func (p *DetailPage) Type() templateType {
+func (p DetailPage) templateType() templateType {
 	if path.Base(p.Url) == "index" {
 		return TMPL_INDEX
 	}
 	return TMPL_PAGE
 }
 
-func (p *DetailPage) Path() string {
-	return p.Url
-}
+func (p DetailPage) path() string { return p.Url }
 
-func (p *DetailPage) Hidden() bool {
-	return p.Draft
-}
+func (p DetailPage) hidden() bool { return p.Draft }
 
-func (p *DetailPage) Content() interface{} {
+func (p DetailPage) date() time.Time { return p.CreatedAt }
+
+func (p DetailPage) getContentType() string { return p.ContentType }
+
+func (p DetailPage) getTemplate() *SiteTemplate { return p.Template }
+
+func (p DetailPage) content() interface{} {
 	return struct {
 		Title     string
 		CreatedAt time.Time
@@ -71,58 +82,49 @@ func (p *DetailPage) Content() interface{} {
 	}
 }
 
-func NewDetailPage(file fs.File, path string) (*DetailPage, error) {
+func NewDetailPage(file fs.File, path string) (DetailPage, error) {
 	metadata, body := separateMetadata(file)
 	filetype := filepath.Ext(path)
 	page := DetailPage{}
 	if len(metadata) > 0 {
 		err := json.Unmarshal(metadata, &page)
 		if err != nil {
-			return nil, err
+			return DetailPage{}, err
 		}
 	}
 	page.Body = convertToHTML(body, filetype)
 	page.Url = strings.TrimSuffix("/"+path, filetype)
-	return &page, nil
+	return page, nil
 }
 
 type ListPage struct {
 	Title    string
 	Url      string
-	Pages    []*DetailPage
+	Pages    []Page
 	Template *SiteTemplate
 }
 
-func (p *ListPage) Render(w io.Writer) error {
-	return p.Template.Template.ExecuteTemplate(w, string(p.Template.Layout), p.Content())
+func (p ListPage) Render(w io.Writer) error {
+	return p.Template.Template.ExecuteTemplate(w, string(p.Template.Layout), p.content())
 }
 
-func (p *ListPage) Type() templateType {
-	return TMPL_LIST
-}
+func (p ListPage) templateType() templateType { return TMPL_LIST }
 
-func (p *ListPage) Path() string {
-	return p.Url
-}
+func (p ListPage) path() string { return p.Url }
 
-func (p *ListPage) GetTemplatePath() string {
-	tmplName := p.Type().FileName()
-	dir := path.Dir(p.Path())
-	if dir == "." {
-		return tmplName
-	}
-	return path.Join(dir, tmplName)
-}
+func (p ListPage) hidden() bool { return false }
 
-func (p *ListPage) Hidden() bool {
-	return false
-}
+func (p ListPage) date() time.Time { return time.Now() }
 
-func (p *ListPage) Content() interface{} {
+func (p ListPage) getContentType() string { return "list" }
+
+func (p ListPage) getTemplate() *SiteTemplate { return p.Template }
+
+func (p ListPage) content() interface{} {
 	return struct {
 		Title string
 		Url   string
-		Pages []*DetailPage
+		Pages []Page
 	}{
 		Title: p.Title,
 		Url:   p.Url,
@@ -130,10 +132,10 @@ func (p *ListPage) Content() interface{} {
 	}
 }
 
-func NewListPage(dir string, title string, pages []*DetailPage) *ListPage {
+func NewListPage(dir string, title string, pages []Page) ListPage {
 	// turn title to title case
 	title = strings.ToUpper(string(title[0])) + string(title[1:])
-	return &ListPage{
+	return ListPage{
 		Title: title,
 		Url:   "/" + dir,
 		Pages: pages,

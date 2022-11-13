@@ -2,8 +2,8 @@ package powerlinx
 
 import "sort"
 
-func (s *Site) sortAllPages() []*DetailPage {
-	all := make([]*DetailPage, 0, len(s.PageMap))
+func (s *Site) sortAllPages() []Page {
+	all := make([]Page, 0, len(s.PageMap))
 	for _, value := range s.PageMap {
 		all = append(all, value)
 	}
@@ -11,13 +11,13 @@ func (s *Site) sortAllPages() []*DetailPage {
 	return all
 }
 
-func sortPageList(pages []*DetailPage) []*DetailPage {
+func sortPageList(pages []Page) []Page {
 	sort.Sort(byTime(pages))
 	return pages
 }
 
 // Create Sort Interface for Pages
-type byTime []*DetailPage
+type byTime []Page
 
 func (t byTime) Len() int {
 	return len(t)
@@ -28,5 +28,5 @@ func (t byTime) Swap(i, j int) {
 }
 
 func (t byTime) Less(i, j int) bool {
-	return t[j].CreatedAt.Before(t[i].CreatedAt)
+	return getDate(t[j]).Before(getDate(t[i]))
 }

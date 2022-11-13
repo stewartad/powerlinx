@@ -43,22 +43,6 @@ func (s *Site) GenerateSite(outdir string) error {
 		log.Println(err)
 	}
 
-	// write out aggregate pages
-	for dir, page := range s.ListPageMap {
-		outPath := path.Clean(path.Join(outdir + dir + string(os.PathSeparator) + "index.html"))
-		outFile, err := createHTMLFile(outPath)
-		if err != nil {
-			return err
-		}
-		defer outFile.Close()
-		// err = writeListPage(outFile, page)
-		err = writePage(outFile, page)
-		if err != nil {
-			return err
-		}
-	}
-
-	// write out single pages, overwriting any generated aggregate pages that have custom implementation
 	for url, page := range s.PageMap {
 		outPath := path.Join(outdir + url + ".html")
 		outFile, err := createHTMLFile(outPath)
@@ -66,7 +50,6 @@ func (s *Site) GenerateSite(outdir string) error {
 			return err
 		}
 		defer outFile.Close()
-		// err = writeSinglePage(outFile, page)
 		err = writePage(outFile, page)
 		if err != nil {
 			return err
