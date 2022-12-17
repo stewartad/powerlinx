@@ -523,19 +523,28 @@ func (s *Site) createPageFromFile(filePath string) (Page, error) {
 
 // starting with the deepest possible template location and moving up, search for existing templates
 func (s *Site) getTemplate(p Page) (*SiteTemplate, error) {
-	tmplName := tmplType(p).FileName()
+	specificTmplName := path.Base(getUrl(p) + ".html")
+	genericTmplName := tmplType(p).FileName()
 	tmplDir := strings.TrimPrefix(path.Dir(getUrl(p)), "/")
+
+	// first check for specific template, matching page file name
+	tmplPath := path.Join(tmplDir, specificTmplName)
+	template, exists := s.SiteTemplates[tmplPath]
+	if exists {
+		return template, nil
+	}
+	// then check for generic template
 	for tmplDir != "." && tmplDir != "/" {
-		tmplPath := path.Join(tmplDir, tmplName)
+		tmplPath = path.Join(tmplDir, genericTmplName)
 		template, exists := s.SiteTemplates[tmplPath]
 		if exists {
 			return template, nil
 		}
 		tmplDir = path.Join(path.Dir(tmplDir))
 	}
-	template, exists := s.SiteTemplates[tmplName]
+	template, exists = s.SiteTemplates[genericTmplName]
 	if !exists {
-		return nil, errors.New("Can't find base template " + tmplName)
+		return nil, errors.New("Can't find base template " + genericTmplName)
 	}
 	return template, nil
 }
