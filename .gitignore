@@ -1,6 +1,2 @@
-assets/
-templates/
-pub/
-data/
-main
-/.vscode
+.vscode
+testdata/yequari.com
