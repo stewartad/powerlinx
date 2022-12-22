@@ -57,7 +57,8 @@ type PageMetadata struct {
 	Draft     bool      `json:"draft"`
 	TmplName  string    `json:"template"`
 	Url       string
-	generate  bool
+	Generate  bool
+	Links     []*Page
 	// TODO: yaml metadata
 }
 
@@ -142,7 +143,7 @@ func NewAggregatePage(url string) *Page {
 			CreatedAt: time.Now(),
 			Url:       url,
 			TmplName:  string(TMPL_LIST),
-			generate:  true,
+			Generate:  true,
 		},
 	}
 }
