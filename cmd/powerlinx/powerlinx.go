@@ -23,26 +23,21 @@ func (d HTMLDir) Open(name string) (http.File, error) {
 }
 
 func main() {
-	content := os.DirFS("data")
-	templates := os.DirFS("templates")
-	assets := os.DirFS("assets")
+	content := os.DirFS("testdata/yequari.com/data")
+	templates := os.DirFS("testdata/yequari.com/templates")
+	assets := os.DirFS("testdata/yequari.com/assets")
 	// site := powerlinx.NewSite(content, templates, powerlinx.IncludeDrafts())
 	site, err := powerlinx.NewSite(content, templates)
 	if err != nil {
 		panic(err)
 	}
 
-	// TODO: add views
-	// need a way to automatically detect which pages have special templates
-	// maybe apply templates of the same name as the directory?
-	//
-
 	log.Println("Generating Site in ./pub")
-	err = site.GenerateSite("pub")
+	err = site.GenerateSite("testdata/yequari.com/public")
 	if err != nil {
 		panic(err)
 	}
-	log.Println("Generating Feed in ./pub")
+	// log.Println("Generating Feed in ./pub")
 
 	// now := time.Now()
 	// feed := &feeds.Feed{
@@ -57,7 +52,7 @@ func main() {
 	// 	panic(err)
 	// }
 
-	fileserver := http.FileServer(HTMLDir{http.Dir("pub/")})
+	fileserver := http.FileServer(HTMLDir{http.Dir("testdata/yequari.com/public/")})
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(assets))))
 	http.Handle("/", http.StripPrefix("/", fileserver))
 

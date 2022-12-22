@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"html/template"
 	"os"
 	"path"
@@ -16,10 +15,6 @@ import (
 func FilepathToUrl(file string) (string, string) {
 	ext := filepath.Ext(file)
 	return strings.TrimSuffix("/"+file, ext), ext
-}
-
-func TmplNameToFileName(tmpl string) string {
-	return fmt.Sprintf("_%s.html", tmpl)
 }
 
 func getAllPagesInDir(dir string, pages []string) []string {

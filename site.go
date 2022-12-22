@@ -84,7 +84,7 @@ func discoverTemplates(templatesFs fs.FS) (map[string]*SiteTemplate, error) {
 		templates[tmplPath] = &SiteTemplate{
 			Path:   tmplPath,
 			Name:   path.Base(tmplPath),
-			Type:   templateType(tmplType),
+			Type:   TemplateType(tmplType),
 			Layout: baseLayout,
 		}
 		perr := templates[tmplPath].ParseTemplate(templatesFs)

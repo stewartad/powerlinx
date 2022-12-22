@@ -10,13 +10,13 @@ import (
 	"time"
 )
 
-type templateType string
+type TemplateType string
 
-const TMPL_PAGE templateType = "_single.html"
-const TMPL_LIST templateType = "_list.html"
-const TMPL_INDEX templateType = "_index.html"
+const TMPL_PAGE TemplateType = "_single.html"
+const TMPL_LIST TemplateType = "_list.html"
+const TMPL_INDEX TemplateType = "_index.html"
 
-func (t templateType) FileName() string {
+func (t TemplateType) FileName() string {
 	return fmt.Sprintf("_%s.html", t)
 }
 
@@ -35,7 +35,7 @@ const baseLayout templateLayout = "layout.html"
 // This pattern continues for any number of directories
 type SiteTemplate struct {
 	Name     string
-	Type     templateType
+	Type     TemplateType
 	Path     string
 	Layout   templateLayout
 	Template *template.Template
