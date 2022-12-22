@@ -4,9 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"time"
 
-	"github.com/gorilla/feeds"
 	"github.com/stewartad/powerlinx"
 )
 
@@ -29,7 +27,10 @@ func main() {
 	templates := os.DirFS("templates")
 	assets := os.DirFS("assets")
 	// site := powerlinx.NewSite(content, templates, powerlinx.IncludeDrafts())
-	site := powerlinx.NewSite(content, templates)
+	site, err := powerlinx.NewSite(content, templates)
+	if err != nil {
+		panic(err)
+	}
 
 	// TODO: add views
 	// need a way to automatically detect which pages have special templates
@@ -37,29 +38,24 @@ func main() {
 	//
 
 	log.Println("Generating Site in ./pub")
-	err := site.Build()
-	if err != nil {
-		panic(err)
-	}
-
 	err = site.GenerateSite("pub")
 	if err != nil {
 		panic(err)
 	}
 	log.Println("Generating Feed in ./pub")
 
-	now := time.Now()
-	feed := &feeds.Feed{
-		Title:       "yequari's blog",
-		Link:        &feeds.Link{Href: "http://" + site.Config.BaseUrl},
-		Description: "thoughts about anything and nothing",
-		Author:      &feeds.Author{Name: "yequari"},
-		Created:     now,
-	}
-	err = site.GenerateFeed("/blog", "pub", feed)
-	if err != nil {
-		panic(err)
-	}
+	// now := time.Now()
+	// feed := &feeds.Feed{
+	// 	Title:       "yequari's blog",
+	// 	Link:        &feeds.Link{Href: "http://" + site.Config.BaseUrl},
+	// 	Description: "thoughts about anything and nothing",
+	// 	Author:      &feeds.Author{Name: "yequari"},
+	// 	Created:     now,
+	// }
+	// err = site.GenerateFeed("/blog", "pub", feed)
+	// if err != nil {
+	// 	panic(err)
+	// }
 
 	fileserver := http.FileServer(HTMLDir{http.Dir("pub/")})
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(assets))))
