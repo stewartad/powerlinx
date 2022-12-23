@@ -1,0 +1,12 @@
+{{ define "content" }}
+<div id="sidebar"></div>
+<div id="content">
+  <ul>
+    {{range .Content.Pages}}
+      {{if .}}
+        <p><li><a href={{.Metadata.Url}}>{{.Metadata.Title}}</a></li></p>
+      {{end}}
+    {{end}}
+  </ul>
+</div>
+{{end}}

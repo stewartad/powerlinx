@@ -22,8 +22,8 @@ func (d HTMLDir) Open(name string) (http.File, error) {
 	return f, err
 }
 
-func main() {
-	content := os.DirFS("testdata/yequari.com/data")
+func Yeq() {
+	content := os.DirFS("testdata/yequari.com/content")
 	templates := os.DirFS("testdata/yequari.com/templates")
 	assets := os.DirFS("testdata/yequari.com/assets")
 	// site := powerlinx.NewSite(content, templates, powerlinx.IncludeDrafts())
@@ -57,4 +57,31 @@ func main() {
 	http.Handle("/", http.StripPrefix("/", fileserver))
 
 	log.Fatal((http.ListenAndServe(":8080", nil)))
+}
+
+func Basic() {
+	content := os.DirFS("testdata/basic/content")
+	templates := os.DirFS("testdata/basic/templates")
+	assets := os.DirFS("testdata/basic/assets")
+	// site := powerlinx.NewSite(content, templates, powerlinx.IncludeDrafts())
+	site, err := powerlinx.NewSite(content, templates)
+	if err != nil {
+		panic(err)
+	}
+
+	log.Println("Generating Site in ./pub")
+	err = site.GenerateSite("testdata/basic/public")
+	if err != nil {
+		panic(err)
+	}
+
+	fileserver := http.FileServer(HTMLDir{http.Dir("testdata/basic/public/")})
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(assets))))
+	http.Handle("/", http.StripPrefix("/", fileserver))
+
+	log.Fatal((http.ListenAndServe(":8080", nil)))
+}
+
+func main() {
+	Basic()
 }
