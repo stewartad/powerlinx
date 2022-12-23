@@ -105,12 +105,31 @@ func TestTemplateMatchingBase(t *testing.T) {
 	}
 }
 
-func TestTemplateMatchingComplex(t *testing.T) {
-
-}
-
 func TestTemplateCustom(t *testing.T) {
+	urls, listUrls := createDir("notes", 0, 2)
+	site, _ := createSite(urls, listUrls)
 
+	site.Pages["/notes/example1"].Metadata.TmplName = "example1"
+	site.SiteTmpl["notes/example1"] = createTemplate("example1", "notes")
+
+	err := site.Build()
+	t.Log(site)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+
+	expectedTemplates := map[string]string{
+		"/index":          string(powerlinx.TMPL_INDEX),
+		"/notes/index":    string(powerlinx.TMPL_LIST),
+		"/notes/example0": string(powerlinx.TMPL_PAGE),
+		"/notes/example1": "example1",
+	}
+	for url, tmpl := range expectedTemplates {
+		err = checkTemplate(url, tmpl, site.Pages[url].SiteTmpl.Name)
+		if err != nil {
+			t.Fatalf(err.Error())
+		}
+	}
 }
 
 func TestFeed(t *testing.T) {

@@ -37,6 +37,7 @@ func convertMdToHTML(data []byte) (template.HTML, error) {
 }
 
 func parseMetadata(metadata []byte) (PageMetadata, error) {
+	bytes.TrimSpace(metadata)
 	pagemeta := PageMetadata{}
 	if len(metadata) > 0 {
 		err := json.Unmarshal(metadata, &pagemeta)

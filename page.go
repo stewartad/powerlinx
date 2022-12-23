@@ -73,7 +73,7 @@ func (p *Page) Render(w io.Writer) error {
 }
 
 // Create Sort Interface for Pages
-type byTime []Page
+type byTime []*Page
 
 func (t byTime) Len() int {
 	return len(t)

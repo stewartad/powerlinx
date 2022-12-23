@@ -156,12 +156,13 @@ func (s *Site) generateAggregatePages() {
 		if page.Metadata.Generate {
 			page.Metadata.Title = path.Base(path.Dir(url))
 			links := getAllPagesInDir(path.Dir(url), urls)
-			pages := []Page{}
+			pages := []*Page{}
 			for _, x := range links {
-				pages = append(pages, *s.Pages[x])
+				pages = append(pages, s.Pages[x])
 			}
 			log.Printf("Generating Page %s, Links %v", page.Metadata.Url, links)
 			sort.Sort(byTime(pages))
+			page.Metadata.Links = pages
 			page.Content = nil
 		}
 	}

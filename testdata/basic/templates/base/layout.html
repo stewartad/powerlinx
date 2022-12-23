@@ -9,6 +9,7 @@
     <body>
         <div class="column">
             <h1>Powerlinx Example Site</h1>
+            {{block "header" .}}{{ end }}
             <div id="container">
                 {{ block "content" . }}{{ end }}
             </div>
