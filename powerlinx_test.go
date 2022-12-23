@@ -1,100 +1,75 @@
 package powerlinx_test
 
 import (
-	"path"
+	"fmt"
 	"testing"
-	"time"
 
 	"github.com/stewartad/powerlinx"
 )
 
-func createDefaultSite() powerlinx.Site {
-	return powerlinx.Site{
-		Pages: map[string]*powerlinx.Page{
-			"/index": createPage("index", "/index", "_index.html"),
-		},
-		SiteTmpl: defaultTemplates(),
-		Config:   powerlinx.NewConfig(),
+func checkPageCount(expected, actual int) error {
+	if actual != expected {
+		return fmt.Errorf("Created %d pages, expected %d\n", actual, expected)
 	}
+	return nil
 }
 
-// Create dummy pages
-func createPage(title, url, tmplName string) *powerlinx.Page {
-	return &powerlinx.Page{
-		Metadata: powerlinx.PageMetadata{
-			Title:     title,
-			CreatedAt: time.Now(),
-			Url:       url,
-			TmplName:  tmplName,
-		},
-		Content: "hello",
+func checkTemplate(url, expected, actual string) error {
+	if actual != expected {
+		return fmt.Errorf("%s: incorrect template %s, expected %s\n", url, actual, expected)
 	}
-}
-
-// Create dummy templates
-func createTemplate(tmplName powerlinx.TemplateType, dir string) *powerlinx.SiteTemplate {
-	return &powerlinx.SiteTemplate{
-		Name: string(tmplName),
-		Type: tmplName,
-		Path: path.Join(dir, string(tmplName)),
-	}
-}
-
-func createSinglePages(urls []string, pages map[string]*powerlinx.Page) {
-	for _, u := range urls {
-		pages[u] = createPage(path.Base(u), u, string(powerlinx.TMPL_PAGE))
-	}
-}
-
-func createAggregatePages(urls []string, pages map[string]*powerlinx.Page) {
-	for _, u := range urls {
-		page := createPage(path.Base(u), u, string(powerlinx.TMPL_PAGE))
-		page.Metadata.Generate = true
-		pages[u] = page
-	}
-}
-
-func defaultTemplates() map[string]*powerlinx.SiteTemplate {
-	return map[string]*powerlinx.SiteTemplate{
-		string(powerlinx.TMPL_INDEX): createTemplate(powerlinx.TMPL_INDEX, ""),
-		string(powerlinx.TMPL_LIST):  createTemplate(powerlinx.TMPL_LIST, ""),
-		string(powerlinx.TMPL_PAGE):  createTemplate(powerlinx.TMPL_PAGE, ""),
-	}
+	return nil
 }
 
 // Check generation of aggregate pages
 
 func TestSimpleGenerator(t *testing.T) {
 	urls := []string{"/about", "/now"}
-
-	site := createDefaultSite()
-	createSinglePages(urls, site.Pages)
+	site, pageCount := createSite(urls, []string{})
 	err := site.Build()
 	if err != nil {
-		t.Fatalf("Error building site %s\n", err)
+		t.Fatalf(err.Error())
 	}
 	t.Log(site)
-	if len(site.Pages) > len(urls)+1 {
-		t.Fatalf("Created %d pages, expected %d\n", len(site.Pages), len(urls))
+	err = checkPageCount(pageCount, len(site.Pages))
+	if err != nil {
+		t.Fatalf(err.Error())
 	}
 }
 
 func TestAggregatePageSimple(t *testing.T) {
-	urls := []string{"/notes/example1", "notes/example2"}
-	listUrls := []string{"/notes"}
-	pageCount := len(urls) + len(listUrls) + 1
-	site := createDefaultSite()
-	createSinglePages(urls, site.Pages)
-	createAggregatePages(listUrls, site.Pages)
+	urls, listUrls := createDir("notes", 0, 2)
+	site, pageCount := createSite(urls, listUrls)
 	err := site.Build()
-	if err != nil {
-		t.Fatalf("Error building site %s\n", err)
-	}
 	t.Log(site)
-	if len(site.Pages) > pageCount {
-		t.Fatalf("Created %d pages, expected %d\n", len(site.Pages), len(urls))
+	if err != nil {
+		t.Fatalf(err.Error())
 	}
-	if len(site.Pages["/notes"].Metadata.Links) > 2 {
+	err = checkPageCount(pageCount, len(site.Pages))
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+	if len(site.Pages["/notes/index"].Metadata.Links) > 2 {
+		t.Fatalf("Linked to %d pages, expected %d\n", len(site.Pages["/notes"].Metadata.Links), 2)
+	}
+}
+
+func TestAggregatePageSimple2(t *testing.T) {
+	depth := 2
+	links := 4
+
+	listUrls, urls := createDir("notes", depth, links)
+	site, pageCount := createSite(urls, listUrls)
+	err := site.Build()
+	t.Log(site, pageCount, urls, listUrls)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+	err = checkPageCount(pageCount, len(site.Pages))
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
+	if len(site.Pages["/notes/subdir1/index"].Metadata.Links) > links {
 		t.Fatalf("Linked to %d pages, expected %d\n", len(site.Pages["/notes"].Metadata.Links), 2)
 	}
 }
@@ -107,11 +82,34 @@ func TestAggregatePageOverwrite(t *testing.T) {
 
 }
 
-func TestTemplateMatchingSimple(t *testing.T) {
+func TestTemplateMatchingBase(t *testing.T) {
+	urls, listUrls := createDir("notes", 0, 2)
+	site, _ := createSite(urls, listUrls)
+	err := site.Build()
+	t.Log(site)
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
 
+	expectedTemplates := map[string]string{
+		"/index":          string(powerlinx.TMPL_INDEX),
+		"/notes/index":    string(powerlinx.TMPL_LIST),
+		"/notes/example0": string(powerlinx.TMPL_PAGE),
+		"/notes/example1": string(powerlinx.TMPL_PAGE),
+	}
+	for url, tmpl := range expectedTemplates {
+		err = checkTemplate(url, tmpl, site.Pages[url].SiteTmpl.Name)
+		if err != nil {
+			t.Fatalf(err.Error())
+		}
+	}
 }
 
 func TestTemplateMatchingComplex(t *testing.T) {
+
+}
+
+func TestTemplateCustom(t *testing.T) {
 
 }
 
