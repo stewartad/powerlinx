@@ -4,11 +4,12 @@ import (
 	"errors"
 	"io/fs"
 	"log"
-	"os"
 	"path"
 	"sort"
 	"strings"
+	"time"
 
+	"github.com/gorilla/feeds"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/renderer/html"
@@ -60,6 +61,7 @@ func NewSite(contentFs fs.FS, templateFs fs.FS, opts ...SiteOption) (Site, error
 		Config:   c,
 		Pages:    pageMap,
 		SiteTmpl: templates,
+		Feeds:    map[string]*feeds.Feed{},
 	}
 	err = site.Build()
 
@@ -126,6 +128,7 @@ type Site struct {
 	Pages    map[string]*Page
 	Config   *SiteConfig
 	SiteTmpl map[string]*SiteTemplate
+	Feeds    map[string]*feeds.Feed
 }
 
 // Build will discover templates, discover individual pages, then generate ListPages for each
@@ -153,19 +156,26 @@ func (s *Site) removeHiddenPages() {
 func (s *Site) generateAggregatePages() {
 	urls := s.getAllUrls()
 	for url, page := range s.Pages {
-		if page.Metadata.Generate {
-			page.Metadata.Title = path.Base(path.Dir(url))
-			links := getAllPagesInDir(path.Dir(url), urls)
-			pages := []*Page{}
-			for _, x := range links {
-				pages = append(pages, s.Pages[x])
-			}
-			log.Printf("Generating Page %s, Links %v", page.Metadata.Url, links)
-			sort.Sort(byTime(pages))
-			page.Metadata.Links = pages
-			page.Content = nil
+		if !page.Metadata.Generate {
+			continue
 		}
+		page.Metadata.Title = path.Base(path.Dir(url))
+		links := getAllPagesInDir(path.Dir(url), urls)
+		pages := []*Page{}
+		for _, x := range links {
+			pages = append(pages, s.Pages[x])
+		}
+		log.Printf("Generating Page %s, Links %v", page.Metadata.Url, links)
+		sort.Sort(byTime(pages))
+		page.Metadata.Links = pages
+		page.Content = nil
+
+		log.Printf("Generating Feed for %s, Links %v", page.Metadata.Url, links)
+		dir := path.Dir(page.Metadata.Url)
+		s.Feeds[dir] = s.CreateFeed(links)
+
 	}
+
 }
 
 func (s *Site) getAllUrls() []string {
@@ -221,54 +231,41 @@ func (s *Site) GenerateSite(outdir string) error {
 			return err
 		}
 	}
+	// TODO: Write feeds
+	for url, feed := range s.Feeds {
+		atomPath := path.Join(outdir, url, "atom.xml")
+		atom, err := feed.ToAtom()
+		if err != nil {
+			return err
+		}
+		err = writeFeed(atomPath, atom)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
-// deletes the target directory then creates an empty one in its place
-func recreateDir(dir string) error {
-	err := os.RemoveAll(dir)
-	if err != nil {
-		return err
+func (s *Site) CreateFeed(urls []string) *feeds.Feed {
+	now := time.Now()
+	f := feeds.Feed{
+		Title:       "a",
+		Link:        &feeds.Link{Href: "http://" + s.Config.BaseUrl},
+		Description: "bleep bloop",
+		Author:      &feeds.Author{Name: "yequari"},
+		Created:     now,
 	}
-	err = os.Mkdir(dir, 0755)
-	if err != nil && !os.IsExist(err) {
-		return err
+	f.Items = []*feeds.Item{}
+	for _, url := range urls {
+		p := s.Pages[url]
+		if path.Base(p.Metadata.Url) != "index" {
+			item := &feeds.Item{
+				Title:   p.Metadata.Title,
+				Created: p.Metadata.CreatedAt,
+				Link:    &feeds.Link{Href: "http://" + path.Join(s.Config.BaseUrl, p.Metadata.Url)},
+			}
+			f.Items = append(f.Items, item)
+		}
 	}
-	return nil
+	return &f
 }
-
-// func (s *Site) GenerateFeed(pageDir string, outdir string, f *feeds.Feed) error {
-
-// 	pages := getAllPagesInDir(pageDir, s.Pages)
-// 	f.Items = []*feeds.Item{}
-// 	for _, p := range pages {
-// 		if path.Base(p.Metadata.Url) != "index" {
-// 			item := &feeds.Item{
-// 				Title:   p.Metadata.Title,
-// 				Created: p.Metadata.CreatedAt,
-// 				Link:    &feeds.Link{Href: "http://" + path.Join(s.Config.BaseUrl, p.Metadata.Url)},
-// 			}
-// 			f.Items = append(f.Items, item)
-// 		}
-// 	}
-// 	atom, err := f.ToAtom()
-// 	if err != nil {
-// 		log.Fatal(err)
-// 	}
-// 	outFile, err := createFile(path.Join(outdir, "feed.xml"))
-// 	if err != nil {
-// 		return err
-// 	}
-// 	defer outFile.Close()
-// 	fileWriter := bufio.NewWriter(outFile)
-// 	_, err = fileWriter.WriteString(atom)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	err = fileWriter.Flush()
-// 	if err != nil {
-// 		return err
-// 	}
-// 	return nil
-
-// }

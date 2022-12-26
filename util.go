@@ -77,3 +77,34 @@ func writePage(outPath string, page Page) error {
 	}
 	return nil
 }
+
+func writeFeed(outPath string, data string) error {
+	outFile, err := createFile(outPath)
+	if err != nil {
+		return err
+	}
+	defer outFile.Close()
+	fileWriter := bufio.NewWriter(outFile)
+	_, err = fileWriter.WriteString(data)
+	if err != nil {
+		return err
+	}
+	err = fileWriter.Flush()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// deletes the target directory then creates an empty one in its place
+func recreateDir(dir string) error {
+	err := os.RemoveAll(dir)
+	if err != nil {
+		return err
+	}
+	err = os.Mkdir(dir, 0755)
+	if err != nil && !os.IsExist(err) {
+		return err
+	}
+	return nil
+}
