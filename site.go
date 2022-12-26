@@ -166,7 +166,6 @@ func (s *Site) generateAggregatePages() {
 		log.Printf("Generating Page %s, Links %v", page.Metadata.Url, links)
 		sort.Sort(byTime(pages))
 		page.Metadata.Links = pages
-		page.Content = nil
 
 		log.Printf("Generating Feed for %s, Links %v", page.Metadata.Url, links)
 		dir := path.Dir(page.Metadata.Url)
@@ -260,6 +259,7 @@ func (s *Site) CreateFeed(urls []string) *feeds.Feed {
 				Title:   p.Metadata.Title,
 				Created: p.Metadata.CreatedAt,
 				Link:    &feeds.Link{Href: "http://" + path.Join(s.Config.Baseurl, p.Metadata.Url)},
+				Content: string(p.Content),
 			}
 			f.Items = append(f.Items, item)
 		}
