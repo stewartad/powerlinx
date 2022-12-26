@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
-	"html/template"
 	"os"
 	"path"
 	"path/filepath"
@@ -18,7 +17,6 @@ func FilepathToUrl(file string) (string, string) {
 }
 
 func getAllPagesInDir(dir string, pages []string) []string {
-	// TODO: check whether to include subdirs or not
 	matchingPages := []string{}
 	for _, url := range pages {
 		if strings.HasPrefix(url, dir) && path.Base(url) != "index" {
@@ -28,12 +26,12 @@ func getAllPagesInDir(dir string, pages []string) []string {
 	return matchingPages
 }
 
-func convertMdToHTML(data []byte) (template.HTML, error) {
+func convertMdToHTML(data []byte) (string, error) {
 	var buf bytes.Buffer
 	if err := markdown.Convert(data, &buf); err != nil {
 		return "", err
 	}
-	return template.HTML(buf.String()), nil
+	return buf.String(), nil
 }
 
 func parseMetadata(metadata []byte) (PageMetadata, error) {

@@ -119,20 +119,23 @@ func NewPageFromFile(filePath string, data []byte) (*Page, error) {
 		metadata.TmplName = DefaultTemplateName(metadata.Url)
 	}
 	// Convert content to HTML
-	var content interface{}
+	var content string
 	if fileType == ".md" {
 		content, err = convertMdToHTML(body)
 		if err != nil {
 			return nil, err
 		}
 	} else if fileType == ".html" {
-		content = template.HTML(string(body))
+		// NOTE: This is a security risk if accepting HTML from users
+		// It's fine when working on your local machine using files you wrote
+		// TODO: make this optional via command line flag
+		content = string(body)
 	} else {
 		return nil, err
 	}
 	return &Page{
 		Metadata: metadata,
-		Content:  content,
+		Content:  template.HTML(content),
 	}, err
 }
 

@@ -63,8 +63,6 @@ func NewSite(contentFs fs.FS, templateFs fs.FS, opts ...SiteOption) (Site, error
 		SiteTmpl: templates,
 		Feeds:    map[string]*feeds.Feed{},
 	}
-	err = site.Build()
-
 	return site, err
 }
 
@@ -134,7 +132,7 @@ type Site struct {
 // Build will discover templates, discover individual pages, then generate ListPages for each
 // directory in s.contentFs that does not have an index.html or index.md file
 func (s *Site) Build() error {
-	if !s.Config.IncludeHidden {
+	if !s.Config.Includedrafts {
 		s.removeHiddenPages()
 	}
 	s.generateAggregatePages()
@@ -231,7 +229,6 @@ func (s *Site) GenerateSite(outdir string) error {
 			return err
 		}
 	}
-	// TODO: Write feeds
 	for url, feed := range s.Feeds {
 		atomPath := path.Join(outdir, url, "atom.xml")
 		atom, err := feed.ToAtom()
@@ -249,10 +246,10 @@ func (s *Site) GenerateSite(outdir string) error {
 func (s *Site) CreateFeed(urls []string) *feeds.Feed {
 	now := time.Now()
 	f := feeds.Feed{
-		Title:       "a",
-		Link:        &feeds.Link{Href: "http://" + s.Config.BaseUrl},
-		Description: "bleep bloop",
-		Author:      &feeds.Author{Name: "yequari"},
+		Title:       s.Config.Title,
+		Link:        &feeds.Link{Href: "http://" + s.Config.Baseurl},
+		Description: s.Config.Description,
+		Author:      &feeds.Author{Name: s.Config.Author},
 		Created:     now,
 	}
 	f.Items = []*feeds.Item{}
@@ -262,7 +259,7 @@ func (s *Site) CreateFeed(urls []string) *feeds.Feed {
 			item := &feeds.Item{
 				Title:   p.Metadata.Title,
 				Created: p.Metadata.CreatedAt,
-				Link:    &feeds.Link{Href: "http://" + path.Join(s.Config.BaseUrl, p.Metadata.Url)},
+				Link:    &feeds.Link{Href: "http://" + path.Join(s.Config.Baseurl, p.Metadata.Url)},
 			}
 			f.Items = append(f.Items, item)
 		}
