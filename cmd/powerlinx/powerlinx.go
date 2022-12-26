@@ -8,6 +8,7 @@ import (
 	"path"
 
 	"github.com/stewartad/powerlinx"
+	"gopkg.in/yaml.v2"
 )
 
 type HTMLDir struct {
@@ -24,12 +25,35 @@ func (d HTMLDir) Open(name string) (http.File, error) {
 	return f, err
 }
 
-func createSite(dir string) (powerlinx.Site, error) {
+func readConfig(configpath string) (*powerlinx.SiteConfig, error) {
+	file, err := os.ReadFile(configpath)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg := powerlinx.SiteConfig{}
+
+	yaml.UnmarshalStrict(file, &cfg)
+	log.Println(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return &cfg, err
+}
+
+func createSite(dir string, configfile string) (*powerlinx.Site, error) {
 	dir = path.Clean(dir)
 	content := os.DirFS(path.Join(dir, "content"))
 	templates := os.DirFS(path.Join(dir, "templates"))
 	// assets := os.DirFS(path.Join(dir, "assets"))
-	return powerlinx.NewSite(content, templates)
+	cfg, err := readConfig(configfile)
+	if err != nil {
+		return nil, err
+	}
+	site, err := powerlinx.NewSite(content, templates)
+	site.Config = cfg
+	return &site, err
+
 }
 
 func startServer(dir string) {
@@ -45,12 +69,23 @@ func startServer(dir string) {
 func main() {
 	var sitedir string
 	var server bool
+	var config string
 	flag.StringVar(&sitedir, "f", ".", "directory to read site data from")
 	flag.BoolVar(&server, "s", false, "start server")
+	flag.StringVar(&config, "c", "", "path to configuration file")
 	flag.Parse()
 
+	if config == "" {
+		config = path.Join(sitedir, "config.yml")
+	}
+
 	pubdir := path.Join(sitedir, "public")
-	site, err := createSite(sitedir)
+	site, err := createSite(sitedir, config)
+	if err != nil {
+		log.Fatalf("error parsing site: %s", err.Error())
+	}
+
+	err = site.Build()
 	if err != nil {
 		log.Fatalf("error building site: %s", err.Error())
 	}

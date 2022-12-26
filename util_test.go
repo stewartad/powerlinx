@@ -5,6 +5,7 @@ import (
 	"path"
 	"time"
 
+	"github.com/gorilla/feeds"
 	"github.com/stewartad/powerlinx"
 )
 
@@ -24,6 +25,7 @@ func createSite(urls, listUrls []string) (powerlinx.Site, int) {
 		Pages:    pages,
 		SiteTmpl: defaultTemplates(),
 		Config:   powerlinx.NewConfig(),
+		Feeds:    make(map[string]*feeds.Feed),
 	}, len(urls) + len(listUrls) + 1
 }
 

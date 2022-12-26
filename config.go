@@ -3,14 +3,17 @@ package powerlinx
 type OptionName string
 
 type SiteConfig struct {
-	IncludeHidden bool
-	BaseUrl       string
+	Includedrafts bool
+	Baseurl       string
+	Title         string
+	Author        string
+	Description   string
 }
 
 func NewConfig() *SiteConfig {
 	return &SiteConfig{
-		IncludeHidden: false,
-		BaseUrl:       "localhost:8080",
+		Includedrafts: false,
+		Baseurl:       "localhost:8080",
 	}
 }
 
@@ -21,7 +24,7 @@ type SiteOption interface {
 type includeDrafts struct{}
 
 func (o *includeDrafts) SetSiteOption(c *SiteConfig) {
-	c.IncludeHidden = true
+	c.Includedrafts = true
 }
 
 func IncludeDrafts() interface {
@@ -35,7 +38,7 @@ type setBaseUrl struct {
 }
 
 func (o *setBaseUrl) SetSiteOption(c *SiteConfig) {
-	c.BaseUrl = o.url
+	c.Baseurl = o.url
 }
 
 func SetBaseUrl(url string) interface {
