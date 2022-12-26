@@ -1,9 +1,11 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"net/http"
 	"os"
+	"path"
 
 	"github.com/stewartad/powerlinx"
 )
@@ -22,60 +24,18 @@ func (d HTMLDir) Open(name string) (http.File, error) {
 	return f, err
 }
 
-func Yeq() {
-	content := os.DirFS("testdata/yequari.com/content")
-	templates := os.DirFS("testdata/yequari.com/templates")
-	assets := os.DirFS("testdata/yequari.com/assets")
-	// site := powerlinx.NewSite(content, templates, powerlinx.IncludeDrafts())
-	site, err := powerlinx.NewSite(content, templates)
-	if err != nil {
-		panic(err)
-	}
-
-	log.Println("Generating Site in ./pub")
-	err = site.GenerateSite("testdata/yequari.com/public")
-	if err != nil {
-		panic(err)
-	}
-	// log.Println("Generating Feed in ./pub")
-
-	// now := time.Now()
-	// feed := &feeds.Feed{
-	// 	Title:       "yequari's blog",
-	// 	Link:        &feeds.Link{Href: "http://" + site.Config.BaseUrl},
-	// 	Description: "thoughts about anything and nothing",
-	// 	Author:      &feeds.Author{Name: "yequari"},
-	// 	Created:     now,
-	// }
-	// err = site.GenerateFeed("/blog", "pub", feed)
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	fileserver := http.FileServer(HTMLDir{http.Dir("testdata/yequari.com/public/")})
-	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(assets))))
-	http.Handle("/", http.StripPrefix("/", fileserver))
-
-	log.Fatal((http.ListenAndServe(":8080", nil)))
+func createSite(dir string) (powerlinx.Site, error) {
+	dir = path.Clean(dir)
+	content := os.DirFS(path.Join(dir, "content"))
+	templates := os.DirFS(path.Join(dir, "templates"))
+	// assets := os.DirFS(path.Join(dir, "assets"))
+	return powerlinx.NewSite(content, templates)
 }
 
-func Basic() {
-	content := os.DirFS("testdata/basic/content")
-	templates := os.DirFS("testdata/basic/templates")
-	assets := os.DirFS("testdata/basic/assets")
-	// site := powerlinx.NewSite(content, templates, powerlinx.IncludeDrafts())
-	site, err := powerlinx.NewSite(content, templates)
-	if err != nil {
-		panic(err)
-	}
-
-	log.Println("Generating Site in ./pub")
-	err = site.GenerateSite("testdata/basic/public")
-	if err != nil {
-		panic(err)
-	}
-
-	fileserver := http.FileServer(HTMLDir{http.Dir("testdata/basic/public/")})
+func startServer(dir string) {
+	assets := os.DirFS(path.Join(dir, "assets")) // TODO: copy assets to public
+	public := path.Join(dir, "public")
+	fileserver := http.FileServer(HTMLDir{http.Dir(public)})
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(assets))))
 	http.Handle("/", http.StripPrefix("/", fileserver))
 
@@ -83,5 +43,25 @@ func Basic() {
 }
 
 func main() {
-	Basic()
+	var sitedir string
+	var server bool
+	flag.StringVar(&sitedir, "f", ".", "directory to read site data from")
+	flag.BoolVar(&server, "s", false, "start server")
+	flag.Parse()
+
+	pubdir := path.Join(sitedir, "public")
+	site, err := createSite(sitedir)
+	if err != nil {
+		log.Fatalf("error building site: %s", err.Error())
+	}
+
+	log.Printf("Generating site in %s\n", pubdir)
+	err = site.GenerateSite(pubdir)
+	if err != nil {
+		log.Fatalf("error writing site to %s: %s\n", pubdir, err.Error())
+	}
+
+	if server {
+		startServer(sitedir)
+	}
 }
