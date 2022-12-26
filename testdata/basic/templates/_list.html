@@ -1,10 +1,10 @@
 {{ define "content" }}
 <div id="sidebar"></div>
 <div id="content">
-  <ul>
+  <ul class="posts h-feed hfeed">
     {{range .Metadata.Links}}
       {{if .}}
-        <p><li><a href={{.Metadata.Url}}>{{.Metadata.Title}}</a></li></p>
+        <p><li class="h-entry"><time class="dt-published" datetime={{.Metadata.CreatedAt}}>{{ .Metadata.CreatedAt.Format "Jan 02, 2006" }}</time>&emsp;<a href={{.Metadata.Url}} class="u-url p-name">{{.Metadata.Title}}</a></li></p>
       {{end}}
     {{end}}
   </ul>
