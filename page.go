@@ -64,7 +64,7 @@ type PageMetadata struct {
 
 type Page struct {
 	Metadata PageMetadata
-	Content  template.HTML
+	Content  interface{}
 	SiteTmpl *SiteTemplate
 }
 

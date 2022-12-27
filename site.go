@@ -259,7 +259,7 @@ func (s *Site) CreateFeed(urls []string) *feeds.Feed {
 				Title:   p.Metadata.Title,
 				Created: p.Metadata.CreatedAt,
 				Link:    &feeds.Link{Href: "http://" + path.Join(s.Config.Baseurl, p.Metadata.Url)},
-				Content: string(p.Content),
+				Content: "", //TODO: fix this
 			}
 			f.Items = append(f.Items, item)
 		}
