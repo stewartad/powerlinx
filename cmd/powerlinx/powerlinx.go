@@ -56,23 +56,26 @@ func createSite(dir string, configfile string) (*powerlinx.Site, error) {
 
 }
 
-func startServer(dir string) {
+func startServer(dir string, port string) {
 	assets := os.DirFS(path.Join(dir, "assets")) // TODO: copy assets to public
 	public := path.Join(dir, "public")
 	fileserver := http.FileServer(HTMLDir{http.Dir(public)})
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(assets))))
 	http.Handle("/", http.StripPrefix("/", fileserver))
 
-	log.Fatal((http.ListenAndServe(":8080", nil)))
+	log.Fatal((http.ListenAndServe(":"+port, nil)))
 }
 
 func main() {
 	var sitedir string
 	var server bool
 	var config string
+	var port string
+
 	flag.StringVar(&sitedir, "f", ".", "directory to read site data from")
 	flag.BoolVar(&server, "s", false, "start server")
 	flag.StringVar(&config, "c", "", "path to configuration file")
+	flag.StringVar(&port, "p", "8080", "port to start server on")
 	flag.Parse()
 
 	if config == "" {
@@ -97,6 +100,6 @@ func main() {
 	}
 
 	if server {
-		startServer(sitedir)
+		startServer(sitedir, port)
 	}
 }
